@@ -1,0 +1,18 @@
+{
+    "sourceFile": "src/FileUploader/hooks/useNetworkType.ts",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 0,
+            "patches": [
+                {
+                    "date": 1748441186597,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                }
+            ],
+            "date": 1748441186597,
+            "name": "Commit-0",
+            "content": " "
+        }
+    ]
+}
