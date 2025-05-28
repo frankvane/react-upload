@@ -1,0 +1,34 @@
+{
+    "sourceFile": "src/components/FileUploader/UploadTask/workers/fileToArrayBuffer.worker.ts",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 4,
+            "patches": [
+                {
+                    "date": 1748432477532,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                },
+                {
+                    "date": 1748432483404,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,5 +1,4 @@\n-// @ts-nocheck\r\n self.onmessage = async function (e) {\r\n   const { file, key } = e.data;\r\n   try {\r\n     const buffer = await file.arrayBuffer();\r\n"
+                },
+                {
+                    "date": 1748432494069,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -16,7 +16,10 @@\n       },\r\n       [buffer]\r\n     );\r\n   } catch (err) {\r\n-    self.postMessage({ success: false, error: err?.message || \"转换失败\" });\r\n+    self.postMessage({\r\n+      success: false,\r\n+      error: err && err.message ? err.message : \"转换失败\",\r\n+    });\r\n   }\r\n };\r\n"
+                },
+                {
+                    "date": 1748432933737,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,13 +1,19 @@\n+importScripts('https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js');\r\n+\r\n self.onmessage = async function (e) {\r\n-  const { file, key } = e.data;\r\n+  const { file } = e.data;\r\n   try {\r\n     const buffer = await file.arrayBuffer();\r\n+    // 生成md5\r\n+    const spark = new self.SparkMD5.ArrayBuffer();\r\n+    spark.append(buffer);\r\n+    const md5 = spark.end();\r\n     self.postMessage(\r\n       {\r\n         success: true,\r\n         data: {\r\n-          key,\r\n+          key: md5,\r\n           name: file.name,\r\n           buffer,\r\n           size: file.size,\r\n           type: file.type,\r\n@@ -18,8 +24,8 @@\n     );\r\n   } catch (err) {\r\n     self.postMessage({\r\n       success: false,\r\n-      error: err && err.message ? err.message : \"转换失败\",\r\n+      error: err && err.message ? err.message : '转换失败',\r\n     });\r\n   }\r\n };\r\n"
+                },
+                {
+                    "date": 1748432997748,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,5 +1,5 @@\n-importScripts('https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js');\r\n+importScripts(\"https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js\");\r\n \r\n self.onmessage = async function (e) {\r\n   const { file } = e.data;\r\n   try {\r\n@@ -24,8 +24,8 @@\n     );\r\n   } catch (err) {\r\n     self.postMessage({\r\n       success: false,\r\n-      error: err && err.message ? err.message : '转换失败',\r\n+      error: err && err.message ? err.message : \"转换失败\",\r\n     });\r\n   }\r\n };\r\n"
+                }
+            ],
+            "date": 1748432477532,
+            "name": "Commit-0",
+            "content": "// @ts-nocheck\r\nself.onmessage = async function (e) {\r\n  const { file, key } = e.data;\r\n  try {\r\n    const buffer = await file.arrayBuffer();\r\n    self.postMessage(\r\n      {\r\n        success: true,\r\n        data: {\r\n          key,\r\n          name: file.name,\r\n          buffer,\r\n          size: file.size,\r\n          type: file.type,\r\n          lastModified: file.lastModified,\r\n        },\r\n      },\r\n      [buffer]\r\n    );\r\n  } catch (err) {\r\n    self.postMessage({ success: false, error: err?.message || \"转换失败\" });\r\n  }\r\n};\r\n"
+        }
+    ]
+}

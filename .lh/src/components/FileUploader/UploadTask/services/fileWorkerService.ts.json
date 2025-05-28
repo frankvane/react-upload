@@ -1,0 +1,22 @@
+{
+    "sourceFile": "src/components/FileUploader/UploadTask/services/fileWorkerService.ts",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 1,
+            "patches": [
+                {
+                    "date": 1748432582318,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                },
+                {
+                    "date": 1748432946476,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -6,9 +6,8 @@\n const workers: Worker[] = [];\r\n const idleWorkers: Worker[] = [];\r\n const taskQueue: Array<{\r\n   file: File;\r\n-  key: string;\r\n   resolve: (meta: UploadFileMeta) => void;\r\n   reject: (err: any) => void;\r\n }> = [];\r\n \r\n@@ -35,17 +34,16 @@\n   if (taskQueue.length === 0 || idleWorkers.length === 0) return;\r\n   const worker = idleWorkers.shift()!;\r\n   const task = taskQueue.shift()!;\r\n   (worker as any)._currentTask = task;\r\n-  worker.postMessage({ file: task.file, key: task.key });\r\n+  worker.postMessage({ file: task.file });\r\n }\r\n \r\n export function fileToArrayBufferWithWorker(\r\n-  file: File,\r\n-  key: string\r\n+  file: File\r\n ): Promise<UploadFileMeta> {\r\n   return new Promise((resolve, reject) => {\r\n-    taskQueue.push({ file, key, resolve, reject });\r\n+    taskQueue.push({ file, resolve, reject });\r\n     runNext();\r\n   });\r\n }\r\n \r\n"
+                }
+            ],
+            "date": 1748432582318,
+            "name": "Commit-0",
+            "content": "// 文件worker调度服务，支持3个worker并发\r\n\r\nimport type { UploadFileMeta } from \"../types/file\";\r\n\r\nconst WORKER_COUNT = 3;\r\nconst workers: Worker[] = [];\r\nconst idleWorkers: Worker[] = [];\r\nconst taskQueue: Array<{\r\n  file: File;\r\n  key: string;\r\n  resolve: (meta: UploadFileMeta) => void;\r\n  reject: (err: any) => void;\r\n}> = [];\r\n\r\nfunction createWorker(): Worker {\r\n  // @ts-ignore\r\n  const worker = new Worker(\r\n    new URL(\"../workers/fileToArrayBuffer.worker.ts\", import.meta.url)\r\n  );\r\n  worker.onmessage = (e) => {\r\n    const { success, data, error } = e.data;\r\n    const task = (worker as any)._currentTask;\r\n    (worker as any)._currentTask = null;\r\n    idleWorkers.push(worker);\r\n    if (task) {\r\n      if (success) task.resolve(data);\r\n      else task.reject(error);\r\n    }\r\n    runNext();\r\n  };\r\n  return worker;\r\n}\r\n\r\nfunction runNext() {\r\n  if (taskQueue.length === 0 || idleWorkers.length === 0) return;\r\n  const worker = idleWorkers.shift()!;\r\n  const task = taskQueue.shift()!;\r\n  (worker as any)._currentTask = task;\r\n  worker.postMessage({ file: task.file, key: task.key });\r\n}\r\n\r\nexport function fileToArrayBufferWithWorker(\r\n  file: File,\r\n  key: string\r\n): Promise<UploadFileMeta> {\r\n  return new Promise((resolve, reject) => {\r\n    taskQueue.push({ file, key, resolve, reject });\r\n    runNext();\r\n  });\r\n}\r\n\r\n// 初始化worker池\r\nif (workers.length === 0) {\r\n  for (let i = 0; i < WORKER_COUNT; i++) {\r\n    const w = createWorker();\r\n    workers.push(w);\r\n    idleWorkers.push(w);\r\n  }\r\n}\r\n"
+        }
+    ]
+}

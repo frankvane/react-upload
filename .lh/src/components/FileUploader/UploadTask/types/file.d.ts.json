@@ -1,0 +1,22 @@
+{
+    "sourceFile": "src/components/FileUploader/UploadTask/types/file.d.ts",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 1,
+            "patches": [
+                {
+                    "date": 1748432468760,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                },
+                {
+                    "date": 1748433096506,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -4,5 +4,6 @@\n   buffer: ArrayBuffer; // 文件数据\r\n   size: number; // 文件大小\r\n   type: string; // 文件类型\r\n   lastModified: number; // 最后修改时间\r\n+  addedAt: number; // 存入indexeddb的时间戳\r\n }\r\n"
+                }
+            ],
+            "date": 1748432468760,
+            "name": "Commit-0",
+            "content": "export interface UploadFileMeta {\r\n  key: string; // 唯一key\r\n  name: string; // 文件名\r\n  buffer: ArrayBuffer; // 文件数据\r\n  size: number; // 文件大小\r\n  type: string; // 文件类型\r\n  lastModified: number; // 最后修改时间\r\n}\r\n"
+        }
+    ]
+}

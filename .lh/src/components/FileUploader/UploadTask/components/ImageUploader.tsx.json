@@ -1,0 +1,26 @@
+{
+    "sourceFile": "src/components/FileUploader/UploadTask/components/ImageUploader.tsx",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 2,
+            "patches": [
+                {
+                    "date": 1748432293196,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                },
+                {
+                    "date": 1748432299308,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -10,9 +10,9 @@\n   const props: UploadProps = {\r\n     multiple: true,\r\n     accept: \"image/*\",\r\n     fileList,\r\n-    beforeUpload: (file) => {\r\n+    beforeUpload: () => {\r\n       // 阻止自动上传，后续自定义处理\r\n       return false;\r\n     },\r\n     onChange: ({ fileList: newFileList }) => {\r\n"
+                },
+                {
+                    "date": 1748432395481,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -3,24 +3,37 @@\n import type { UploadFile, UploadProps } from \"antd/es/upload/interface\";\r\n \r\n import { UploadOutlined } from \"@ant-design/icons\";\r\n \r\n-const ImageUploader: React.FC = () => {\r\n+interface FileSelectorProps {\r\n+  accept?: string;\r\n+  multiple?: boolean;\r\n+  onFilesSelected?: (files: UploadFile[]) => void;\r\n+}\r\n+\r\n+const FileSelector: React.FC<FileSelectorProps> = ({\r\n+  accept = \"*\",\r\n+  multiple = true,\r\n+  onFilesSelected,\r\n+}) => {\r\n   const [fileList, setFileList] = useState<UploadFile[]>([]);\r\n \r\n   const props: UploadProps = {\r\n-    multiple: true,\r\n-    accept: \"image/*\",\r\n+    multiple,\r\n+    accept,\r\n     fileList,\r\n     beforeUpload: () => {\r\n       // 阻止自动上传，后续自定义处理\r\n       return false;\r\n     },\r\n     onChange: ({ fileList: newFileList }) => {\r\n       setFileList(newFileList);\r\n+      onFilesSelected?.(newFileList);\r\n     },\r\n     onRemove: (file) => {\r\n-      setFileList((prev) => prev.filter((item) => item.uid !== file.uid));\r\n+      const newList = fileList.filter((item) => item.uid !== file.uid);\r\n+      setFileList(newList);\r\n+      onFilesSelected?.(newList);\r\n     },\r\n   };\r\n \r\n   return (\r\n@@ -28,19 +41,19 @@\n       <Upload.Dragger {...props} style={{ marginBottom: 16 }}>\r\n         <p className=\"ant-upload-drag-icon\">\r\n           <UploadOutlined />\r\n         </p>\r\n-        <p className=\"ant-upload-text\">点击或拖拽图片到此区域上传</p>\r\n+        <p className=\"ant-upload-text\">点击或拖拽文件到此区域上传</p>\r\n         <p className=\"ant-upload-hint\">支持多选，暂不自动上传</p>\r\n       </Upload.Dragger>\r\n       <Button\r\n         type=\"primary\"\r\n         disabled={fileList.length === 0}\r\n         onClick={() => message.info(\"后续将处理文件存储与上传逻辑\")}\r\n       >\r\n-        处理选中图片\r\n+        处理选中文件\r\n       </Button>\r\n     </div>\r\n   );\r\n };\r\n \r\n-export default ImageUploader;\r\n+export default FileSelector;\r\n"
+                }
+            ],
+            "date": 1748432293196,
+            "name": "Commit-0",
+            "content": "import { Button, Upload, message } from \"antd\";\r\nimport React, { useState } from \"react\";\r\nimport type { UploadFile, UploadProps } from \"antd/es/upload/interface\";\r\n\r\nimport { UploadOutlined } from \"@ant-design/icons\";\r\n\r\nconst ImageUploader: React.FC = () => {\r\n  const [fileList, setFileList] = useState<UploadFile[]>([]);\r\n\r\n  const props: UploadProps = {\r\n    multiple: true,\r\n    accept: \"image/*\",\r\n    fileList,\r\n    beforeUpload: (file) => {\r\n      // 阻止自动上传，后续自定义处理\r\n      return false;\r\n    },\r\n    onChange: ({ fileList: newFileList }) => {\r\n      setFileList(newFileList);\r\n    },\r\n    onRemove: (file) => {\r\n      setFileList((prev) => prev.filter((item) => item.uid !== file.uid));\r\n    },\r\n  };\r\n\r\n  return (\r\n    <div>\r\n      <Upload.Dragger {...props} style={{ marginBottom: 16 }}>\r\n        <p className=\"ant-upload-drag-icon\">\r\n          <UploadOutlined />\r\n        </p>\r\n        <p className=\"ant-upload-text\">点击或拖拽图片到此区域上传</p>\r\n        <p className=\"ant-upload-hint\">支持多选，暂不自动上传</p>\r\n      </Upload.Dragger>\r\n      <Button\r\n        type=\"primary\"\r\n        disabled={fileList.length === 0}\r\n        onClick={() => message.info(\"后续将处理文件存储与上传逻辑\")}\r\n      >\r\n        处理选中图片\r\n      </Button>\r\n    </div>\r\n  );\r\n};\r\n\r\nexport default ImageUploader;\r\n"
+        }
+    ]
+}

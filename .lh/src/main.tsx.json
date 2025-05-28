@@ -1,0 +1,30 @@
+{
+    "sourceFile": "src/main.tsx",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 3,
+            "patches": [
+                {
+                    "date": 1748436120393,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                },
+                {
+                    "date": 1748436136898,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,5 +1,5 @@\n-import \"antd/dist/reset.css\"; // antd 5.x 推荐\n+import \"antd/dist/reset.css\";\n \n import App from \"./App.tsx\";\n import { createRoot } from \"react-dom/client\";\n \n"
+                },
+                {
+                    "date": 1748436191195,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,5 +1,6 @@\n import \"antd/dist/reset.css\";\n+import \"antd/dist/antd.css\";\n \n import App from \"./App.tsx\";\n import { createRoot } from \"react-dom/client\";\n \n"
+                },
+                {
+                    "date": 1748436209324,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,6 +1,5 @@\n import \"antd/dist/reset.css\";\n-import \"antd/dist/antd.css\";\n \n import App from \"./App.tsx\";\n import { createRoot } from \"react-dom/client\";\n \n"
+                }
+            ],
+            "date": 1748436120393,
+            "name": "Commit-0",
+            "content": "import \"antd/dist/reset.css\"; // antd 5.x 推荐\n\nimport App from \"./App.tsx\";\nimport { createRoot } from \"react-dom/client\";\n\ncreateRoot(document.getElementById(\"root\")!).render(<App />);\n"
+        }
+    ]
+}

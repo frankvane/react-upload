@@ -1,0 +1,30 @@
+{
+    "sourceFile": "src/App.tsx",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 3,
+            "patches": [
+                {
+                    "date": 1748431457410,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                },
+                {
+                    "date": 1748432329139,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,4 +1,7 @@\n+import React from \"react\";\n+import UploadTask from \"./components/FileUploader/UploadTask\";\n+\n const App = () => {\n-  return <div>Uploader</div>;\n+  return <UploadTask />;\n };\n export default App;\n"
+                },
+                {
+                    "date": 1748433804079,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -3,5 +3,14 @@\n import { message } from \"antd\";\n \n message.config({\n   top: 100,\n-  durat\n\\ No newline at end of file\n+  duration: 2,\n+  maxCount: 3,\n+  rtl: false,\n+  prefixCls: \"my-message\",\n+});\n+\n+const App = () => {\n+  return <UploadTask />;\n+};\n+export default App;\n"
+                },
+                {
+                    "date": 1748433845838,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -4,9 +4,9 @@\n \n message.config({\n   top: 100,\n   duration: 2,\n-  maxCount: 3,\n+  maxCount: 1,\n   rtl: false,\n   prefixCls: \"my-message\",\n });\n \n"
+                }
+            ],
+            "date": 1748431457410,
+            "name": "Commit-0",
+            "content": "const App = () => {\n  return <div>Uploader</div>;\n};\nexport default App;\n"
+        }
+    ]
+}
