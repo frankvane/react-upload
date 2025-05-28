@@ -136,6 +136,11 @@ export function useFileUploadQueue({
    */
   const [errorInfo, setErrorInfo] = useState<Record<string, string>>({});
 
+  // 获取文件唯一 key，优先用 file.key，否则用 name+size
+  function getFileKey(file: any) {
+    return file.key || file.name + file.size;
+  }
+
   /**
    * beforeUpload 校验
    * @param file 文件对象
@@ -171,14 +176,15 @@ export function useFileUploadQueue({
    */
   const handleCalcMD5 = useCallback(
     async (file: File) => {
-      setLoadingKey(file.name + file.size);
+      setLoadingKey(getFileKey(file));
       try {
         const result = await calcFileMD5WithWorker(file, chunkSize);
-        setMd5Info((prev) => ({ ...prev, [file.name + file.size]: result }));
+        setMd5Info((prev) => ({ ...prev, [getFileKey(file)]: result }));
         // message.success(`MD5计算完成: ${result.fileMD5}`);
         // 秒传验证
         const fileId = `${result.fileMD5}-${file.name}-${file.size}`;
         const chunks = createFileChunks(file, chunkSize);
+        console.log("chunks:", chunks);
         const instantRes = await checkInstantUpload(
           {
             fileId,
@@ -195,10 +201,11 @@ export function useFileUploadQueue({
             paramsTransform,
           }
         );
+        console.log("instantRes:", instantRes);
         if (onCheckSuccess) onCheckSuccess(file, instantRes);
         setInstantInfo((prev) => ({
           ...prev,
-          [file.name + file.size]: instantRes,
+          [getFileKey(file)]: instantRes,
         }));
         // 秒传成功也受keepAfterUpload控制
         if (instantRes.uploaded && !keepAfterUpload) {
@@ -210,7 +217,7 @@ export function useFileUploadQueue({
             }
             if (shouldRemove) {
               setFiles((prev) =>
-                prev.filter((f) => f.name + f.size !== file.name + file.size)
+                prev.filter((f) => getFileKey(f) !== getFileKey(file))
               );
             }
           }, removeDelayMs);
@@ -236,7 +243,7 @@ export function useFileUploadQueue({
 
   // 找到所有未计算MD5的文件，依次自动计算
   useEffect(() => {
-    const unMd5Files = files.filter((f) => !md5Info[f.name + f.size]);
+    const unMd5Files = files.filter((f) => !md5Info[getFileKey(f)]);
     if (unMd5Files.length > 0 && !loadingKey) {
       (async () => {
         for (const file of unMd5Files) {
@@ -249,7 +256,7 @@ export function useFileUploadQueue({
   // 分片上传主流程
   const handleStartUpload = useCallback(
     async (file: File, resumeInfo?: any) => {
-      const key = file.name + file.size;
+      const key = getFileKey(file);
       setErrorInfo((prev) => ({ ...prev, [key]: "" }));
       const md5 = md5Info[key]?.fileMD5 || resumeInfo?.md5;
 
@@ -431,7 +438,7 @@ export function useFileUploadQueue({
               if (ret === false) shouldRemove = false;
             }
             if (shouldRemove) {
-              setFiles((prev) => prev.filter((f) => f.name + f.size !== key));
+              setFiles((prev) => prev.filter((f) => getFileKey(f) !== key));
             }
           }, removeDelayMs);
         }
@@ -482,7 +489,7 @@ export function useFileUploadQueue({
   // 重试所有失败文件
   const handleRetryAllFailed = useCallback(async () => {
     const failedFiles = files.filter((file) => {
-      const key = file.name + file.size;
+      const key = getFileKey(file);
       const uploading = uploadingInfo[key];
       return (
         uploading &&
@@ -500,14 +507,14 @@ export function useFileUploadQueue({
     setUploadingAll(true);
     // 先为所有未计算MD5的文件自动计算MD5
     for (const file of files) {
-      const key = file.name + file.size;
+      const key = getFileKey(file);
       if (!md5Info[key]) {
         await handleCalcMD5(file);
       }
     }
     // 过滤出未秒传且未上传完成的文件
     const needUploadFiles = files.filter((file) => {
-      const key = file.name + file.size;
+      const key = getFileKey(file);
       const instant = instantInfo[key];
       const uploading = uploadingInfo[key];
       return (
@@ -544,10 +551,14 @@ export function useFileUploadQueue({
   // 单个文件上传按钮自动补齐MD5
   const handleStartUploadWithAutoMD5 = useCallback(
     async (file: File) => {
-      const key = file.name + file.size;
+      const key = getFileKey(file);
       if (!md5Info[key]) {
         await handleCalcMD5(file);
       }
+      console.log(
+        "[useFileUploadQueue] handleStartUploadWithAutoMD5: call handleStartUpload",
+        file
+      );
       await handleStartUpload(file);
     },
     [md5Info, handleCalcMD5, handleStartUpload]

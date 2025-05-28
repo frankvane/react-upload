@@ -50,7 +50,7 @@ export function calcFileMD5WithWorker(
 ): Promise<{ fileMD5: string; chunkMD5s: string[] }> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(
-      new URL("../workers/worker-md5.js", import.meta.url)
+      new URL("../workers/worker-md5.ts", import.meta.url)
     );
     worker.postMessage({ file, chunkSize });
     worker.onmessage = (e) => {
