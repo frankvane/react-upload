@@ -58,6 +58,7 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
     handleStartUploadWithAutoMD5,
     handleRetry,
     setFiles,
+    handleStartAll,
   } = useFileUploadQueue({
     apiPrefix: DEFAULT_API_PREFIX,
     chunkSize: networkChunkSize,
@@ -348,6 +349,14 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
           disabled={selectedRowKeys.length === 0 || uploadingAll}
         >
           上传选中
+        </Button>
+        <Button
+          type="primary"
+          style={{ marginLeft: 8 }}
+          onClick={handleStartAll}
+          disabled={filesState.length === 0 || uploadingAll}
+        >
+          上传全部
         </Button>
         {typeof progress === "number" && progress < 100 && (
           <div
