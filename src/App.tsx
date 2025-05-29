@@ -1,4 +1,3 @@
-import React from "react";
 import UploadTask from "./components/FileUploader/UploadTask";
 import { message } from "antd";
 

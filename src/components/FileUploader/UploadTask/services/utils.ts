@@ -106,10 +106,3 @@ export function checkFileTypeSafe(file: File, allowedTypes: string[]): boolean {
   const extMime = mime.getType(file.name) || "";
   return allowedTypes.includes(file.type) && allowedTypes.includes(extMime);
 }
-
-export function formatFileSize(size: number): string {
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(2)} KB`;
-  if (size < 1024 * 1024 * 1024) return `${(size / 1024 / 1024).toFixed(2)} MB`;
-  return `${(size / 1024 / 1024 / 1024).toFixed(2)} GB`;
-}

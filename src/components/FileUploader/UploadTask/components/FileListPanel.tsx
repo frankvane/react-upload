@@ -1,13 +1,14 @@
 import { Button, Progress, Table, Tag, Tooltip, message } from "antd";
-import React, { useEffect, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import {
   clearAllFileMeta,
   getAllFileMeta,
   removeFileMeta,
 } from "../services/dbService";
 
+import { ByteConvert } from "../services/utils";
+import { UploadConfigContext } from "../context";
 import type { UploadFileMeta } from "../types/file";
-import { formatFileSize } from "../services/utils";
 import { useFileUploadQueue } from "../hooks/useFileUploadQueue";
 
 interface FileListPanelProps {
@@ -37,6 +38,16 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [scrollY, setScrollY] = useState(400);
 
+  const uploadConfig = useContext(UploadConfigContext);
+  const networkConcurrency =
+    typeof uploadConfig?.concurrency === "number"
+      ? uploadConfig.concurrency
+      : 3;
+  const networkChunkSize =
+    typeof uploadConfig?.chunkSize === "number"
+      ? uploadConfig.chunkSize
+      : 2 * 1024 * 1024;
+
   const {
     md5Info,
     instantInfo,
@@ -49,7 +60,14 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
     setFiles,
   } = useFileUploadQueue({
     apiPrefix: DEFAULT_API_PREFIX,
+    chunkSize: networkChunkSize,
+    concurrency: networkConcurrency,
   });
+
+  const totalSpeed = Object.values(speedInfo).reduce(
+    (sum, s) => sum + (s.speed || 0),
+    0
+  );
 
   const fetchFiles = async () => {
     setLoading(true);
@@ -148,7 +166,7 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
       align: "right" as const,
       width: 120,
       render: (size: number) => (
-        <span style={{ marginRight: 16 }}>{formatFileSize(size)}</span>
+        <span style={{ marginRight: 16 }}>{ByteConvert(size)}</span>
       ),
     },
     {
@@ -353,6 +371,25 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
             )}
           </div>
         )}
+        <span
+          style={{
+            marginLeft: 16,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <Tag color="blue">网络类型: {uploadConfig?.networkType}</Tag>
+          <Tag color="purple">并发数: {networkConcurrency}</Tag>
+          <Tag color="geekblue">
+            切片大小: {(networkChunkSize / 1024 / 1024).toFixed(2)} MB
+          </Tag>
+          {uploadingAll && (
+            <Tag color="magenta">
+              总速率: {(totalSpeed / 1024 / 1024).toFixed(2)} MB/s
+            </Tag>
+          )}
+        </span>
       </div>
       <Table
         bordered
