@@ -9,6 +9,7 @@ import {
 import { ByteConvert } from "../services/utils";
 import { UploadConfigContext } from "../context";
 import type { UploadFileMeta } from "../types/file";
+import { createFileChunks } from "../services/utils";
 import { useFileUploadQueue } from "../hooks/useFileUploadQueue";
 
 interface FileListPanelProps {
@@ -18,14 +19,29 @@ interface FileListPanelProps {
 
 const DEFAULT_API_PREFIX = "http://localhost:3000/api";
 
-// UploadFileMeta 转 File
+// UploadFileMeta 转 File，确保 chunkSize 也带上
 function metaToFile(meta: UploadFileMeta): File {
-  const file = new File([meta.buffer], meta.name, {
+  let buffer: any = meta.buffer;
+  if (!(buffer instanceof ArrayBuffer)) {
+    if (typeof buffer === "string") {
+      buffer = new TextEncoder().encode(buffer).buffer;
+    } else if (ArrayBuffer.isView(buffer)) {
+      buffer = (buffer as ArrayBufferView).buffer;
+    } else if (
+      (buffer as any)?.type === "Buffer" &&
+      Array.isArray((buffer as any)?.data)
+    ) {
+      buffer = new Uint8Array((buffer as any).data).buffer;
+    } else {
+      buffer = new ArrayBuffer(0);
+    }
+  }
+  const file = new File([buffer], meta.name, {
     type: meta.type,
     lastModified: meta.lastModified,
   });
-  // 关键：强制加 key 字段（内容 hash/md5）
   (file as any).key = meta.key;
+  (file as any).chunkSize = meta.chunkSize; // 关键：挂载 chunkSize
   return file;
 }
 
@@ -78,8 +94,7 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
     setLoading(true);
     const all = await getAllFileMeta();
     setFilesState(all);
-    const fileArr = all.map(metaToFile);
-    setFiles(fileArr);
+    setFiles(all.map(metaToFile));
     setLoading(false);
   };
 
@@ -202,6 +217,64 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
         const speed = speedInfo[key]?.speed || 0;
         const leftTime = speedInfo[key]?.leftTime || 0;
         const error = errorInfo[key];
+        // 终极兜底：分片数直接用 record.size 兜底，详细日志
+        let needUploadChunks = 0;
+        let chunkCheckError = false;
+        const file = metaToFile(record);
+        let size = file.size;
+        if (!size && record.size) size = record.size;
+        // 优先用 file.chunkSize（即 meta 里的 chunkSize）
+        const realChunkSize =
+          typeof (file as any).chunkSize === "number"
+            ? (file as any).chunkSize
+            : typeof record.chunkSize === "number"
+            ? record.chunkSize
+            : networkChunkSize;
+        const chunkCount = Math.ceil(size / realChunkSize) || 1;
+        const chunks = createFileChunks(file, realChunkSize);
+        // 日志
+        console.log("record", record);
+        console.log("file", file);
+        console.log("file.size", file.size);
+        console.log("record.size", record.size);
+        console.log("size(used)", size);
+        console.log("realChunkSize", realChunkSize);
+        console.log("chunkCount", chunkCount);
+        console.log("chunks.length", chunks.length);
+        console.log("instant", instant);
+        // 新增：判断所有分片都已存在且一致
+        let allChunksUploaded = false;
+        if (
+          instant &&
+          Array.isArray(instant.chunkCheckResult) &&
+          instant.chunkCheckResult.length === chunkCount
+        ) {
+          allChunksUploaded = instant.chunkCheckResult.every(
+            (c) => c.exist && c.match
+          );
+        }
+        if (allChunksUploaded) {
+          needUploadChunks = 0;
+          chunkCheckError = false;
+        } else if (
+          !instant ||
+          !Array.isArray(instant.chunkCheckResult) ||
+          instant.chunkCheckResult.length === 0
+        ) {
+          needUploadChunks = chunkCount;
+          chunkCheckError = true;
+        } else if (instant.chunkCheckResult.length !== chunkCount) {
+          needUploadChunks = chunkCount;
+          chunkCheckError = true;
+        } else {
+          needUploadChunks = instant.chunkCheckResult.filter(
+            (c) => !c.exist || !c.match
+          ).length;
+        }
+        if (needUploadChunks === 0 && size > 0 && !allChunksUploaded) {
+          needUploadChunks = chunkCount;
+          chunkCheckError = true;
+        }
         return (
           <div>
             {uploading && uploading.status === "done" ? (
@@ -211,37 +284,57 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
                 {instant &&
                   (instant.uploaded ? (
                     <Tag color="green">已秒传</Tag>
+                  ) : allChunksUploaded ? (
+                    <Tag color="blue">所有分片已存在，可直接合并</Tag>
                   ) : (
-                    <Tag color="orange">
-                      需上传分片:{" "}
-                      {
-                        instant.chunkCheckResult.filter(
-                          (c: any) => !c.exist || !c.match
-                        ).length
-                      }
+                    <Tag color={chunkCheckError ? "red" : "orange"}>
+                      需上传分片: {needUploadChunks}
+                      {chunkCheckError && (
+                        <span style={{ marginLeft: 4 }}>（分片校验异常）</span>
+                      )}
                     </Tag>
                   ))}
-                {!instant?.uploaded && (
-                  <Button
-                    size="small"
-                    type="primary"
-                    onClick={() =>
-                      handleStartUploadWithAutoMD5(metaToFile(record))
-                    }
-                    disabled={
-                      !md5 ||
-                      (uploading && uploading.status === "uploading") ||
-                      uploadingAll
-                    }
-                    style={{ marginLeft: 8 }}
-                  >
-                    {!md5
-                      ? "计算中..."
-                      : uploading && uploading.status === "uploading"
-                      ? "上传中..."
-                      : "开始上传"}
-                  </Button>
-                )}
+                {!instant?.uploaded &&
+                  (allChunksUploaded ? (
+                    <Button
+                      size="small"
+                      type="primary"
+                      onClick={() =>
+                        handleStartUploadWithAutoMD5(metaToFile(record))
+                      }
+                      disabled={
+                        !md5 ||
+                        (uploading && uploading.status === "uploading") ||
+                        uploadingAll
+                      }
+                      style={{ marginLeft: 8 }}
+                    >
+                      合并文件
+                    </Button>
+                  ) : (
+                    <Button
+                      size="small"
+                      type="primary"
+                      onClick={() =>
+                        handleStartUploadWithAutoMD5(metaToFile(record))
+                      }
+                      disabled={
+                        !md5 ||
+                        (uploading && uploading.status === "uploading") ||
+                        uploadingAll ||
+                        (needUploadChunks === 0 &&
+                          !instant?.uploaded &&
+                          !chunkCheckError)
+                      }
+                      style={{ marginLeft: 8 }}
+                    >
+                      {!md5
+                        ? "计算中..."
+                        : uploading && uploading.status === "uploading"
+                        ? "上传中..."
+                        : "开始上传"}
+                    </Button>
+                  ))}
                 {uploading && (
                   <span style={{ display: "inline-block", minWidth: 100 }}>
                     <Tooltip

@@ -6,4 +6,5 @@ export interface UploadFileMeta {
   type: string; // 文件类型
   lastModified: number; // 最后修改时间
   addedAt: number; // 存入indexeddb的时间戳
+  chunkSize: number; // 分片大小，绑定每个文件
 }

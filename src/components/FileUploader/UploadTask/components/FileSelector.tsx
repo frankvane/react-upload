@@ -2,6 +2,7 @@ import { Button, message } from "antd";
 import React, { useRef, useState } from "react";
 import { getFileMeta, saveFileMeta } from "../services/dbService";
 
+import { UploadConfigContext } from "../context";
 import type { UploadFileMeta } from "../types/file";
 import { UploadOutlined } from "@ant-design/icons";
 import { fileToArrayBufferWithWorker } from "../services/fileWorkerService";
@@ -25,6 +26,11 @@ const FileSelector: React.FC<FileSelectorProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   const msgKey = "file-process-msg";
+  const uploadConfig = React.useContext(UploadConfigContext);
+  const chunkSize =
+    typeof uploadConfig?.chunkSize === "number"
+      ? uploadConfig.chunkSize
+      : 2 * 1024 * 1024;
 
   const handleFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -49,6 +55,7 @@ const FileSelector: React.FC<FileSelectorProps> = ({
           const metaWithTime: UploadFileMeta = {
             ...meta,
             addedAt: Date.now(),
+            chunkSize,
           };
           await saveFileMeta(metaWithTime);
           added++;

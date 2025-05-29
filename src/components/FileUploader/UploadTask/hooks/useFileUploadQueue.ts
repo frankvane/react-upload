@@ -144,6 +144,11 @@ export function useFileUploadQueue({
     return file.key || file.name + file.size;
   }
 
+  // 获取文件分片大小，优先用meta里的chunkSize
+  function getFileChunkSize(file: any) {
+    return typeof file.chunkSize === "number" ? file.chunkSize : chunkSize;
+  }
+
   /**
    * beforeUpload 校验
    * @param file 文件对象
@@ -181,12 +186,13 @@ export function useFileUploadQueue({
     async (file: File) => {
       setLoadingKey(getFileKey(file));
       try {
-        const result = await calcFileMD5WithWorker(file, chunkSize);
+        const realChunkSize = getFileChunkSize(file);
+        const result = await calcFileMD5WithWorker(file, realChunkSize);
         setMd5Info((prev) => ({ ...prev, [getFileKey(file)]: result }));
         // message.success(`MD5计算完成: ${result.fileMD5}`);
         // 秒传验证
         const fileId = `${result.fileMD5}-${file.name}-${file.size}`;
-        const chunks = createFileChunks(file, chunkSize);
+        const chunks = createFileChunks(file, realChunkSize);
         const instantRes = await checkInstantUpload(
           {
             fileId,
@@ -265,6 +271,7 @@ export function useFileUploadQueue({
         return;
       }
 
+      const realChunkSize = getFileChunkSize(file);
       const fileId = `${md5}-${file.name}-${file.size}`;
 
       let uploadedChunks: number[] = resumeInfo?.uploadedChunks || [];
@@ -277,7 +284,7 @@ export function useFileUploadQueue({
         }
       }
 
-      const allChunks = createFileChunks(file, chunkSize);
+      const allChunks = createFileChunks(file, realChunkSize);
       const needUploadChunks = allChunks.filter(
         (c) => !uploadedChunks.includes(c.index)
       );
@@ -286,8 +293,8 @@ export function useFileUploadQueue({
       let uploadedBytes = uploadedChunks.reduce(
         (sum, idx) =>
           sum +
-          (createFileChunks(file, chunkSize)[idx]?.end -
-            createFileChunks(file, chunkSize)[idx]?.start),
+          (createFileChunks(file, realChunkSize)[idx]?.end -
+            createFileChunks(file, realChunkSize)[idx]?.start),
         0
       );
 
@@ -303,104 +310,115 @@ export function useFileUploadQueue({
         { time: Date.now(), loaded: uploadedBytes },
       ];
 
-      // 上传每个分片
-      for (const chunk of needUploadChunks) {
-        let retry = 0;
-        let delay = 500;
-        const chunkSizeVal = chunk.end - chunk.start;
-
-        while (retry < maxRetry) {
-          try {
-            const uploadResult = await uploadFileChunk(
-              {
-                fileId,
-                chunk_md5: md5Info[key].chunkMD5s[chunk.index],
-                index: chunk.index,
-                chunk: chunk.chunk,
-                name: file.name,
-                total: allChunks.length,
-              },
-              {
-                url: uploadUrl,
-                apiPrefix,
-                headers,
-                paramsTransform,
-              }
-            );
-
-            // 使用服务器返回的MD5值更新本地状态
-            if (uploadResult.data?.chunk_md5) {
-              md5Info[key].chunkMD5s[chunk.index] = uploadResult.data.chunk_md5;
-            }
-
-            uploadedCount++;
-            uploadedBytes += chunkSizeVal;
-            uploadedChunks.push(chunk.index);
-
-            // 更新进度
-            const progress = Math.round(
-              (uploadedCount / allChunks.length) * 100
-            );
-
-            setUploadingInfo((prev) => ({
-              ...prev,
-              [key]: {
-                progress,
-                status: "uploading",
-              },
-            }));
-
-            // 更新速度信息
-            const now = Date.now();
-            const prevHistory = speedHistoryRef.current[key] || [];
-            speedHistoryRef.current[key] = appendSpeedHistory(
-              prevHistory,
-              now,
-              uploadedBytes,
-              5
-            );
-            const history = speedHistoryRef.current[key];
-            if (history.length >= 2) {
-              const { speed, leftTime } = calcSpeedAndLeftTime(
-                history,
-                file.size
-              );
-              setSpeedInfo((prev) => ({
-                ...prev,
-                [key]: {
-                  speed,
-                  leftTime,
-                },
-              }));
-            }
-
-            if (onProgress) {
-              onProgress(file, progress);
-            }
-            break;
-          } catch (err: any) {
-            retry++;
-            if (retry >= maxRetry) {
-              setUploadingInfo((prev) => ({
-                ...prev,
-                [key]: {
-                  progress: Math.round(
+      // 分片并发池上传
+      await new Promise<void>((resolve) => {
+        let idx = 0;
+        let active = 0;
+        let finished = 0;
+        const total = needUploadChunks.length;
+        const tryStartNext = () => {
+          while (active < concurrency && idx < total) {
+            const chunk = needUploadChunks[idx++];
+            active++;
+            (async () => {
+              let retry = 0;
+              let delay = 500;
+              const chunkSizeVal = chunk.end - chunk.start;
+              while (retry < maxRetry) {
+                try {
+                  const uploadResult = await uploadFileChunk(
+                    {
+                      fileId,
+                      chunk_md5: md5Info[key].chunkMD5s[chunk.index],
+                      index: chunk.index,
+                      chunk: chunk.chunk,
+                      name: file.name,
+                      total: allChunks.length,
+                    },
+                    {
+                      url: uploadUrl,
+                      apiPrefix,
+                      headers,
+                      paramsTransform,
+                    }
+                  );
+                  // 使用服务器返回的MD5值更新本地状态
+                  if (uploadResult.data?.chunk_md5) {
+                    md5Info[key].chunkMD5s[chunk.index] =
+                      uploadResult.data.chunk_md5;
+                  }
+                  uploadedCount++;
+                  uploadedBytes += chunkSizeVal;
+                  uploadedChunks.push(chunk.index);
+                  // 更新进度
+                  const progress = Math.round(
                     (uploadedCount / allChunks.length) * 100
-                  ),
-                  status: "error",
-                },
-              }));
-              setErrorInfo((prev) => ({
-                ...prev,
-                [key]: err?.message || "分片上传失败",
-              }));
-              return;
-            }
-            await new Promise((res) => setTimeout(res, delay));
-            delay = Math.min(delay * 2, 5000);
+                  );
+                  setUploadingInfo((prev) => ({
+                    ...prev,
+                    [key]: {
+                      progress,
+                      status: "uploading",
+                    },
+                  }));
+                  // 更新速度信息
+                  const now = Date.now();
+                  const prevHistory = speedHistoryRef.current[key] || [];
+                  speedHistoryRef.current[key] = appendSpeedHistory(
+                    prevHistory,
+                    now,
+                    uploadedBytes,
+                    5
+                  );
+                  const history = speedHistoryRef.current[key];
+                  if (history.length >= 2) {
+                    const { speed, leftTime } = calcSpeedAndLeftTime(
+                      history,
+                      file.size
+                    );
+                    setSpeedInfo((prev) => ({
+                      ...prev,
+                      [key]: {
+                        speed,
+                        leftTime,
+                      },
+                    }));
+                  }
+                  if (onProgress) {
+                    onProgress(file, progress);
+                  }
+                  break;
+                } catch (err: any) {
+                  retry++;
+                  if (retry >= maxRetry) {
+                    setUploadingInfo((prev) => ({
+                      ...prev,
+                      [key]: {
+                        progress: Math.round(
+                          (uploadedCount / allChunks.length) * 100
+                        ),
+                        status: "error",
+                      },
+                    }));
+                    setErrorInfo((prev) => ({
+                      ...prev,
+                      [key]: err?.message || "分片上传失败",
+                    }));
+                    break;
+                  }
+                  await new Promise((res) => setTimeout(res, delay));
+                  delay = Math.min(delay * 2, 5000);
+                }
+              }
+              active--;
+              finished++;
+              if (finished === total) resolve();
+              else tryStartNext();
+            })();
           }
-        }
-      }
+        };
+        tryStartNext();
+      });
 
       // 所有分片上传完成，开始合并
       try {
