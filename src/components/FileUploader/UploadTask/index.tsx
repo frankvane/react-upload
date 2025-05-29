@@ -9,8 +9,13 @@ const UploadTask: React.FC = () => {
   const [progress, setProgress] = useState<number>(100);
   const [costSeconds, setCostSeconds] = useState<number>(0);
 
-  const { networkType, concurrency, chunkSize } = useNetworkType();
-  const networkReady = !!networkType && concurrency > 0 && chunkSize > 0;
+  const { networkType, fileConcurrency, chunkConcurrency, chunkSize } =
+    useNetworkType();
+  const networkReady =
+    !!networkType &&
+    fileConcurrency > 0 &&
+    chunkConcurrency > 0 &&
+    chunkSize > 0;
 
   const handleProgress = (
     progress: number,
@@ -32,7 +37,7 @@ const UploadTask: React.FC = () => {
 
   return (
     <UploadConfigContext.Provider
-      value={{ networkType, concurrency, chunkSize }}
+      value={{ networkType, fileConcurrency, chunkConcurrency, chunkSize }}
     >
       <h2>文件批量上传任务</h2>
       <FileSelector onProgress={handleProgress} />

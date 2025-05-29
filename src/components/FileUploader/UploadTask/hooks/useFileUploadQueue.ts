@@ -40,6 +40,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * @param options.onRemoveAfterUpload 上传完成后移除文件的回调
  * @param options.allowedTypes 允许的文件类型
  * @param options.apiPrefix 接口前缀
+ * @param options.fileConcurrency 文件并发池调度大小
  * @returns 所有上传相关状态与操作方法
  */
 export function useFileUploadQueue({
@@ -63,6 +64,7 @@ export function useFileUploadQueue({
   onRemoveAfterUpload,
   allowedTypes = ["image/png", "image/jpeg", "image/gif"],
   apiPrefix,
+  fileConcurrency = 2,
 }: {
   accept?: string;
   maxSizeMB?: number;
@@ -88,6 +90,7 @@ export function useFileUploadQueue({
   ) => boolean | void | Promise<boolean | void>;
   allowedTypes?: string[];
   apiPrefix?: string;
+  fileConcurrency?: number;
 }) {
   /**
    * 文件列表
@@ -521,21 +524,32 @@ export function useFileUploadQueue({
         (!uploading || uploading.status !== "done")
       );
     });
-    // 并发控制
+    // 文件并发池调度
     let idx = 0;
-    const queue: Promise<void>[] = [];
-    const next = async () => {
-      if (idx >= needUploadFiles.length) return;
-      const file = needUploadFiles[idx++];
-      await handleStartUpload(file);
-      await next();
-    };
-    for (let i = 0; i < Math.min(concurrency, needUploadFiles.length); i++) {
-      queue.push(next());
-    }
-    await Promise.all(queue);
-    setUploadingAll(false);
-    // message.success("全部上传任务已完成");
+    let activeCount = 0;
+    let finishedCount = 0;
+    const total = needUploadFiles.length;
+    return await new Promise<void>((resolve) => {
+      const tryStartNext = () => {
+        while (activeCount < fileConcurrency && idx < total) {
+          const file = needUploadFiles[idx++];
+          activeCount++;
+          handleStartUpload(file)
+            .catch(() => {})
+            .finally(() => {
+              activeCount--;
+              finishedCount++;
+              if (finishedCount === total) {
+                setUploadingAll(false);
+                resolve();
+              } else {
+                tryStartNext();
+              }
+            });
+        }
+      };
+      tryStartNext();
+    });
   }, [
     files,
     md5Info,
@@ -543,7 +557,7 @@ export function useFileUploadQueue({
     uploadingInfo,
     handleCalcMD5,
     handleStartUpload,
-    concurrency,
+    fileConcurrency,
   ]);
 
   // 单个文件上传按钮自动补齐MD5

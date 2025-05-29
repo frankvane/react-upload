@@ -39,9 +39,13 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
   const [scrollY, setScrollY] = useState(400);
 
   const uploadConfig = useContext(UploadConfigContext);
-  const networkConcurrency =
-    typeof uploadConfig?.concurrency === "number"
-      ? uploadConfig.concurrency
+  const fileConcurrency =
+    typeof uploadConfig?.fileConcurrency === "number"
+      ? uploadConfig.fileConcurrency
+      : 2;
+  const chunkConcurrency =
+    typeof uploadConfig?.chunkConcurrency === "number"
+      ? uploadConfig.chunkConcurrency
       : 3;
   const networkChunkSize =
     typeof uploadConfig?.chunkSize === "number"
@@ -62,7 +66,7 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
   } = useFileUploadQueue({
     apiPrefix: DEFAULT_API_PREFIX,
     chunkSize: networkChunkSize,
-    concurrency: networkConcurrency,
+    concurrency: chunkConcurrency,
   });
 
   const totalSpeed = Object.values(speedInfo).reduce(
@@ -389,7 +393,8 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
           }}
         >
           <Tag color="blue">网络类型: {uploadConfig?.networkType}</Tag>
-          <Tag color="purple">并发数: {networkConcurrency}</Tag>
+          <Tag color="purple">文件并发数: {fileConcurrency}</Tag>
+          <Tag color="purple">分片并发数: {chunkConcurrency}</Tag>
           <Tag color="geekblue">
             切片大小: {(networkChunkSize / 1024 / 1024).toFixed(2)} MB
           </Tag>
