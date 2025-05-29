@@ -3,11 +3,15 @@
     "activeCommit": 0,
     "commits": [
         {
-            "activePatchIndex": 0,
+            "activePatchIndex": 1,
             "patches": [
                 {
                     "date": 1748432595644,
                     "content": "Index: \n===================================================================\n--- \n+++ \n"
+                },
+                {
+                    "date": 1748530319043,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -6,27 +6,88 @@\n const store = localforage.createInstance({\r\n   name: STORE_NAME,\r\n });\r\n \r\n+// 添加一个缓存层，减少频繁的IndexedDB访问\r\n+const metaCache = new Map<string, UploadFileMeta>();\r\n+\r\n export async function saveFileMeta(meta: UploadFileMeta) {\r\n-  await store.setItem(meta.key, meta);\r\n+  try {\r\n+    // 更新缓存\r\n+    metaCache.set(meta.key, meta);\r\n+\r\n+    // 异步保存到IndexedDB\r\n+    await store.setItem(meta.key, meta);\r\n+    return true;\r\n+  } catch (error) {\r\n+    console.error(\"dbService: error saving meta\", meta.key, error);\r\n+    return false;\r\n+  }\r\n }\r\n \r\n export async function getFileMeta(key: string): Promise<UploadFileMeta | null> {\r\n-  return (await store.getItem<UploadFileMeta>(key)) || null;\r\n+  try {\r\n+    // 先从缓存获取\r\n+    if (metaCache.has(key)) {\r\n+      return metaCache.get(key) || null;\r\n+    }\r\n+\r\n+    // 缓存未命中，从IndexedDB获取\r\n+    const value = (await store.getItem<UploadFileMeta>(key)) || null;\r\n+\r\n+    if (value) {\r\n+      // 更新缓存\r\n+      metaCache.set(key, value);\r\n+    }\r\n+\r\n+    return value;\r\n+  } catch (error) {\r\n+    console.error(\"dbService: error retrieving meta\", key, error);\r\n+    return null;\r\n+  }\r\n }\r\n \r\n export async function removeFileMeta(key: string) {\r\n-  await store.removeItem(key);\r\n+  try {\r\n+    // 从缓存中移除\r\n+    metaCache.delete(key);\r\n+\r\n+    // 从IndexedDB中移除\r\n+    await store.removeItem(key);\r\n+    return true;\r\n+  } catch (error) {\r\n+    console.error(\"dbService: error removing meta\", key, error);\r\n+    return false;\r\n+  }\r\n }\r\n \r\n export async function clearAllFileMeta() {\r\n-  await store.clear();\r\n+  try {\r\n+    // 清空缓存\r\n+    metaCache.clear();\r\n+\r\n+    // 清空IndexedDB\r\n+    await store.clear();\r\n+    return true;\r\n+  } catch (error) {\r\n+    console.error(\"dbService: error clearing all metas\", error);\r\n+    return false;\r\n+  }\r\n }\r\n \r\n export async function getAllFileMeta(): Promise<UploadFileMeta[]> {\r\n-  const metas: UploadFileMeta[] = [];\r\n-  await store.iterate<UploadFileMeta, void>((value) => {\r\n-    metas.push(value);\r\n-  });\r\n-  return metas;\r\n+  try {\r\n+    const metas: UploadFileMeta[] = [];\r\n+\r\n+    // 使用批处理方式获取所有元数据\r\n+    await store.iterate<UploadFileMeta, void>((value) => {\r\n+      // 更新缓存\r\n+      metaCache.set(value.key, value);\r\n+      metas.push(value);\r\n+    });\r\n+\r\n+    return metas;\r\n+  } catch (error) {\r\n+    console.error(\"dbService: error fetching all metas\", error);\r\n+    return [];\r\n+  }\r\n }\r\n"
                 }
             ],
             "date": 1748432595644,

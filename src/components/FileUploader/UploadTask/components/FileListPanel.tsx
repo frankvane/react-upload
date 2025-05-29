@@ -91,10 +91,18 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
 
   const fetchFiles = async () => {
     setLoading(true);
-    const all = await getAllFileMeta();
-    setFilesState(all);
-    setFiles(all.map(metaToFile));
-    setLoading(false);
+    // 使用setTimeout延迟执行，避免初始化时的性能问题
+    setTimeout(async () => {
+      try {
+        const all = await getAllFileMeta();
+        setFilesState(all);
+        setFiles(all.map(metaToFile));
+      } catch (err) {
+        console.error("加载文件列表失败", err);
+      } finally {
+        setLoading(false);
+      }
+    }, 200);
   };
 
   useEffect(() => {
@@ -292,12 +300,15 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
                 {uploading && uploading.status === "calculating" && (
                   <div>
                     <Tag color="blue">计算MD5中...</Tag>
-                    <Progress
-                      percent={uploading.progress}
-                      size="small"
-                      status="active"
-                      style={{ width: 80 }}
-                    />
+                    <span
+                      style={{
+                        fontSize: "12px",
+                        marginLeft: "4px",
+                        color: "#1890ff",
+                      }}
+                    >
+                      {uploading.progress}%
+                    </span>
                   </div>
                 )}
                 {uploading && uploading.status === "checking" && (

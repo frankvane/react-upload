@@ -191,20 +191,28 @@ export function useFileUploadQueue({
         [getFileKey(file)]: { progress: 0, status: "calculating" },
       }));
 
-      // 创建一个进度更新函数
+      // 创建一个进度更新函数，使用防抖减少状态更新频率
+      let updateTimer: ReturnType<typeof setTimeout> | null = null;
       const updateProgress = (progress: number) => {
-        setUploadingInfo((prev) => ({
-          ...prev,
-          [getFileKey(file)]: {
-            progress,
-            status: "calculating",
-          },
-        }));
-
-        // 触发外部进度回调
-        if (onProgress) {
-          onProgress(file, progress);
+        if (updateTimer) {
+          clearTimeout(updateTimer);
         }
+
+        // 延迟更新UI状态，减少重绘频率
+        updateTimer = setTimeout(() => {
+          setUploadingInfo((prev) => ({
+            ...prev,
+            [getFileKey(file)]: {
+              progress,
+              status: "calculating",
+            },
+          }));
+
+          // 触发外部进度回调
+          if (onProgress) {
+            onProgress(file, progress);
+          }
+        }, 100); // 100ms防抖
       };
 
       try {
@@ -226,18 +234,42 @@ export function useFileUploadQueue({
                 if (data.type === "progress") {
                   updateProgress(data.progress);
                 } else if (data.type === "complete") {
+                  // 清除可能存在的更新定时器
+                  if (updateTimer) {
+                    clearTimeout(updateTimer);
+                  }
+
+                  // 确保进度显示为100%
+                  setUploadingInfo((prev) => ({
+                    ...prev,
+                    [getFileKey(file)]: {
+                      progress: 100,
+                      status: "calculating",
+                    },
+                  }));
+
                   resolve({
                     fileMD5: data.fileMD5,
                     chunkMD5s: data.chunkMD5s,
                   });
                   worker.terminate();
                 } else if (data.type === "error") {
+                  // 清除可能存在的更新定时器
+                  if (updateTimer) {
+                    clearTimeout(updateTimer);
+                  }
+
                   reject(new Error(data.error));
                   worker.terminate();
                 }
               };
 
               worker.onerror = (err) => {
+                // 清除可能存在的更新定时器
+                if (updateTimer) {
+                  clearTimeout(updateTimer);
+                }
+
                 reject(err);
                 worker.terminate();
               };
@@ -342,14 +374,19 @@ export function useFileUploadQueue({
 
   // 找到所有未计算MD5的文件，依次自动计算
   useEffect(() => {
-    const unMd5Files = files.filter((f) => !md5Info[getFileKey(f)]);
-    if (unMd5Files.length > 0 && !loadingKey) {
-      (async () => {
-        for (const file of unMd5Files) {
-          await handleCalcMD5(file);
-        }
-      })();
-    }
+    // 添加延迟，避免页面初始化时立即计算MD5导致的性能问题
+    const timer = setTimeout(() => {
+      // 限制初始化时的计算，只处理第一个文件
+      const unMd5Files = files.filter((f) => !md5Info[getFileKey(f)]);
+      if (unMd5Files.length > 0 && !loadingKey) {
+        (async () => {
+          // 每次只处理一个文件，避免同时启动多个worker
+          await handleCalcMD5(unMd5Files[0]);
+        })();
+      }
+    }, 1000); // 延迟1秒开始计算MD5，给页面渲染留出足够时间
+
+    return () => clearTimeout(timer);
   }, [files, md5Info, loadingKey, handleCalcMD5]);
 
   // 分片上传主流程
@@ -621,6 +658,8 @@ export function useFileUploadQueue({
       const key = getFileKey(file);
       if (!md5Info[key]) {
         await handleCalcMD5(file);
+        // 每次计算完一个文件后暂停一下，避免阻塞UI
+        await new Promise((resolve) => setTimeout(resolve, 100));
       }
     }
     // 过滤出未秒传且未上传完成的文件

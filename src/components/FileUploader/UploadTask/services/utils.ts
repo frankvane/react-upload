@@ -30,17 +30,22 @@ export function checkFileBeforeUpload({
 }
 
 export function createFileChunks(file: File, chunkSize: number) {
-  const chunks = [];
+  const totalChunks = Math.ceil(file.size / chunkSize);
+  const chunks = new Array(totalChunks);
+
   let cur = 0;
-  while (cur < file.size) {
-    chunks.push({
-      index: chunks.length,
-      start: cur,
-      end: Math.min(cur + chunkSize, file.size),
-      chunk: file.slice(cur, cur + chunkSize),
-    });
+  for (let i = 0; i < totalChunks; i++) {
+    const start = cur;
+    const end = Math.min(cur + chunkSize, file.size);
+    chunks[i] = {
+      index: i,
+      start,
+      end,
+      chunk: file.slice(start, end),
+    };
     cur += chunkSize;
   }
+
   return chunks;
 }
 
