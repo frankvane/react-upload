@@ -37,6 +37,7 @@ const FileSelector: React.FC<FileSelectorProps> = ({
     const failedFiles: string[] = [];
     let current = 0;
     const total = files.length;
+    onProgress?.(0, 0, total);
     message.destroy(msgKey);
     message.loading({ content: "正在处理文件...", key: msgKey, duration: 0 });
     for (let i = 0; i < files.length; i++) {
