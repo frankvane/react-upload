@@ -184,7 +184,6 @@ export function useFileUploadQueue({
         // 秒传验证
         const fileId = `${result.fileMD5}-${file.name}-${file.size}`;
         const chunks = createFileChunks(file, chunkSize);
-        console.log("chunks:", chunks);
         const instantRes = await checkInstantUpload(
           {
             fileId,
@@ -201,7 +200,6 @@ export function useFileUploadQueue({
             paramsTransform,
           }
         );
-        console.log("instantRes:", instantRes);
         if (onCheckSuccess) onCheckSuccess(file, instantRes);
         setInstantInfo((prev) => ({
           ...prev,
@@ -555,10 +553,6 @@ export function useFileUploadQueue({
       if (!md5Info[key]) {
         await handleCalcMD5(file);
       }
-      console.log(
-        "[useFileUploadQueue] handleStartUploadWithAutoMD5: call handleStartUpload",
-        file
-      );
       await handleStartUpload(file);
     },
     [md5Info, handleCalcMD5, handleStartUpload]

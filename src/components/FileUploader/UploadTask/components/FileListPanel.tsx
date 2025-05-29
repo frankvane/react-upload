@@ -57,20 +57,6 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
     setFilesState(all);
     const fileArr = all.map(metaToFile);
     setFiles(fileArr);
-    // 调试：打印 useFileUploadQueue 的 files
-    setTimeout(() => {
-      // @ts-expect-error: window.__debug_upload_files 仅用于调试全局变量
-      if (window.__debug_upload_files) window.__debug_upload_files(fileArr);
-      else
-        console.log(
-          "useFileUploadQueue files:",
-          fileArr.map((f) => ({
-            name: f.name,
-            size: f.size,
-            key: (f as any).key,
-          }))
-        );
-    }, 100);
     setLoading(false);
   };
 
@@ -123,10 +109,22 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
     message.success("批量删除成功");
   };
 
-  const rowSelection = {
-    selectedRowKeys,
-    onChange: (keys: React.Key[]) => setSelectedRowKeys(keys),
-  };
+  const rowSelection = React.useMemo(
+    () => ({
+      selectedRowKeys,
+      onChange: (keys: React.Key[]) => setSelectedRowKeys(keys),
+      getCheckboxProps: (record: UploadFileMeta) => {
+        const key = record.key;
+        // 已上传成功或已秒传的禁用 checkbox
+        return {
+          disabled:
+            uploadingInfo[key]?.status === "done" ||
+            instantInfo[key]?.uploaded === true,
+        };
+      },
+    }),
+    [selectedRowKeys, uploadingInfo, instantInfo]
+  );
 
   const columns = [
     {
