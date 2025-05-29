@@ -9,7 +9,6 @@ import {
 import { ByteConvert } from "../services/utils";
 import { UploadConfigContext } from "../context";
 import type { UploadFileMeta } from "../types/file";
-import { createFileChunks } from "../services/utils";
 import { useFileUploadQueue } from "../hooks/useFileUploadQueue";
 
 interface FileListPanelProps {
@@ -251,7 +250,6 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
             ? record.chunkSize
             : networkChunkSize;
         const chunkCount = Math.ceil(size / realChunkSize) || 1;
-        const chunks = createFileChunks(file, realChunkSize);
         // 新增：判断所有分片都已存在且一致
         let allChunksUploaded = false;
         if (
@@ -291,6 +289,28 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
               <Tag color="green">上传成功</Tag>
             ) : (
               <>
+                {uploading && uploading.status === "calculating" && (
+                  <div>
+                    <Tag color="blue">计算MD5中...</Tag>
+                    <Progress
+                      percent={uploading.progress}
+                      size="small"
+                      status="active"
+                      style={{ width: 80 }}
+                    />
+                  </div>
+                )}
+                {uploading && uploading.status === "checking" && (
+                  <div>
+                    <Tag color="cyan">秒传验证中...</Tag>
+                    <Progress
+                      percent={100}
+                      size="small"
+                      status="active"
+                      style={{ width: 80 }}
+                    />
+                  </div>
+                )}
                 {instant &&
                   (instant.uploaded ? (
                     <Tag color="green">已秒传</Tag>

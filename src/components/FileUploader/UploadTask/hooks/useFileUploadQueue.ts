@@ -1,7 +1,6 @@
 import { Modal, Upload, message } from "antd";
 import {
   appendSpeedHistory,
-  calcFileMD5WithWorker,
   calcSpeedAndLeftTime,
   calcTotalSpeed,
   checkFileBeforeUpload,
@@ -185,14 +184,86 @@ export function useFileUploadQueue({
   const handleCalcMD5 = useCallback(
     async (file: File) => {
       setLoadingKey(getFileKey(file));
+
+      // 设置初始状态为计算中
+      setUploadingInfo((prev) => ({
+        ...prev,
+        [getFileKey(file)]: { progress: 0, status: "calculating" },
+      }));
+
+      // 创建一个进度更新函数
+      const updateProgress = (progress: number) => {
+        setUploadingInfo((prev) => ({
+          ...prev,
+          [getFileKey(file)]: {
+            progress,
+            status: "calculating",
+          },
+        }));
+
+        // 触发外部进度回调
+        if (onProgress) {
+          onProgress(file, progress);
+        }
+      };
+
       try {
+        // 初始化进度为0
+        updateProgress(0);
+
         const realChunkSize = getFileChunkSize(file);
-        const result = await calcFileMD5WithWorker(file, realChunkSize);
+
+        // 创建一个包装函数，添加进度监听
+        const calcMD5WithProgress = async () => {
+          return new Promise<{ fileMD5: string; chunkMD5s: string[] }>(
+            (resolve, reject) => {
+              const worker = new Worker(
+                new URL("../workers/worker-md5.ts", import.meta.url)
+              );
+
+              worker.onmessage = (e) => {
+                const data = e.data;
+                if (data.type === "progress") {
+                  updateProgress(data.progress);
+                } else if (data.type === "complete") {
+                  resolve({
+                    fileMD5: data.fileMD5,
+                    chunkMD5s: data.chunkMD5s,
+                  });
+                  worker.terminate();
+                } else if (data.type === "error") {
+                  reject(new Error(data.error));
+                  worker.terminate();
+                }
+              };
+
+              worker.onerror = (err) => {
+                reject(err);
+                worker.terminate();
+              };
+
+              // 发送数据到Worker
+              worker.postMessage({ file, chunkSize: realChunkSize });
+            }
+          );
+        };
+
+        // 执行带进度的MD5计算
+        const result = await calcMD5WithProgress();
+
+        // 更新MD5信息
         setMd5Info((prev) => ({ ...prev, [getFileKey(file)]: result }));
-        // message.success(`MD5计算完成: ${result.fileMD5}`);
+
         // 秒传验证
         const fileId = `${result.fileMD5}-${file.name}-${file.size}`;
         const chunks = createFileChunks(file, realChunkSize);
+
+        // 更新状态为验证秒传
+        setUploadingInfo((prev) => ({
+          ...prev,
+          [getFileKey(file)]: { progress: 100, status: "checking" },
+        }));
+
         const instantRes = await checkInstantUpload(
           {
             fileId,
@@ -209,11 +280,14 @@ export function useFileUploadQueue({
             paramsTransform,
           }
         );
+
         if (onCheckSuccess) onCheckSuccess(file, instantRes);
+
         setInstantInfo((prev) => ({
           ...prev,
           [getFileKey(file)]: instantRes,
         }));
+
         // 秒传成功也受keepAfterUpload控制
         if (instantRes.uploaded && !keepAfterUpload) {
           setTimeout(async () => {
@@ -229,8 +303,25 @@ export function useFileUploadQueue({
             }
           }, removeDelayMs);
         }
-      } catch {
-        // message.error("MD5或秒传接口异常");
+
+        // 更新状态为完成
+        setUploadingInfo((prev) => ({
+          ...prev,
+          [getFileKey(file)]: {
+            progress: 100,
+            status: instantRes.uploaded ? "done" : "ready",
+          },
+        }));
+      } catch (err) {
+        console.error("MD5或秒传接口异常", err);
+        setErrorInfo((prev) => ({
+          ...prev,
+          [getFileKey(file)]: (err as Error).message || "MD5或秒传接口异常",
+        }));
+        setUploadingInfo((prev) => ({
+          ...prev,
+          [getFileKey(file)]: { progress: 0, status: "error" },
+        }));
       } finally {
         setLoadingKey(null);
       }
@@ -245,6 +336,7 @@ export function useFileUploadQueue({
       removeDelayMs,
       onRemoveAfterUpload,
       apiPrefix,
+      onProgress,
     ]
   );
 

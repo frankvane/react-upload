@@ -45,22 +45,77 @@ export function createFileChunks(file: File, chunkSize: number) {
 }
 
 export function calcFileMD5WithWorker(
-  file: File,
+  buffer: ArrayBuffer,
   chunkSize: number
 ): Promise<{ fileMD5: string; chunkMD5s: string[] }> {
   return new Promise((resolve, reject) => {
-    const worker = new Worker(
-      new URL("../workers/worker-md5.ts", import.meta.url)
-    );
-    worker.postMessage({ file, chunkSize });
-    worker.onmessage = (e) => {
-      resolve(e.data);
-      worker.terminate();
-    };
-    worker.onerror = (err) => {
+    if (!buffer || !(buffer instanceof ArrayBuffer)) {
+      console.error("calcFileMD5WithWorker: Invalid buffer provided", buffer);
+      return reject(new Error("Invalid buffer: buffer must be an ArrayBuffer"));
+    }
+
+    if (!buffer.byteLength) {
+      console.error("calcFileMD5WithWorker: Empty buffer provided");
+      return reject(new Error("Empty buffer: buffer.byteLength is 0"));
+    }
+
+    if (!chunkSize || chunkSize <= 0) {
+      console.error("calcFileMD5WithWorker: Invalid chunkSize", chunkSize);
+      chunkSize = 2 * 1024 * 1024; // 默认使用2MB
+      console.log("calcFileMD5WithWorker: Using default chunkSize", chunkSize);
+    }
+
+    try {
+      const worker = new Worker(
+        new URL("../workers/worker-md5.ts", import.meta.url)
+      );
+
+      console.log("calcFileMD5WithWorker: buffer type", typeof buffer);
+      console.log(
+        "calcFileMD5WithWorker: buffer instanceof ArrayBuffer",
+        buffer instanceof ArrayBuffer
+      );
+      console.log(
+        "calcFileMD5WithWorker: buffer.byteLength",
+        buffer.byteLength
+      );
+      console.log("calcFileMD5WithWorker: chunkSize", chunkSize);
+
+      // 创建一个回调函数处理不同类型的消息
+      worker.onmessage = (e) => {
+        const data = e.data;
+
+        if (data.type === "progress") {
+          // 处理进度更新
+          console.log(`MD5计算进度: ${data.progress}%`);
+          // 这里可以触发进度回调，如果需要的话
+        } else if (data.type === "complete") {
+          // 计算完成
+          resolve({
+            fileMD5: data.fileMD5,
+            chunkMD5s: data.chunkMD5s,
+          });
+          worker.terminate();
+        } else if (data.type === "error") {
+          // 处理错误
+          console.error("calcFileMD5WithWorker: Worker error", data.error);
+          reject(new Error(data.error));
+          worker.terminate();
+        }
+      };
+
+      worker.onerror = (err) => {
+        console.error("calcFileMD5WithWorker: Worker error", err);
+        reject(err);
+        worker.terminate();
+      };
+
+      // 发送数据到Worker
+      worker.postMessage({ buffer, chunkSize }, [buffer]);
+    } catch (err) {
+      console.error("calcFileMD5WithWorker: Error creating worker", err);
       reject(err);
-      worker.terminate();
-    };
+    }
   });
 }
 

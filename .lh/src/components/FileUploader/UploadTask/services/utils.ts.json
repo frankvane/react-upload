@@ -3,7 +3,7 @@
     "activeCommit": 0,
     "commits": [
         {
-            "activePatchIndex": 3,
+            "activePatchIndex": 4,
             "patches": [
                 {
                     "date": 1748436561773,
@@ -20,6 +20,10 @@
                 {
                     "date": 1748444172260,
                     "content": "Index: \n===================================================================\n--- \n+++ \n@@ -49,9 +49,9 @@\n   chunkSize: number\r\n ): Promise<{ fileMD5: string; chunkMD5s: string[] }> {\r\n   return new Promise((resolve, reject) => {\r\n     const worker = new Worker(\r\n-      new URL(\"../workers/worker-md5.js\", import.meta.url)\r\n+      new URL('../workers/worker-md5.ts', import.meta.url)\r\n     );\r\n     worker.postMessage({ file, chunkSize });\r\n     worker.onmessage = (e) => {\r\n       resolve(e.data);\r\n"
+                },
+                {
+                    "date": 1748529187163,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -97,5 +97,67 @@\n           });\r\n           worker.terminate();\r\n         } else if (data.type === \"error\") {\r\n           // 处理错误\r\n-       \n\\ No newline at end of file\n+          console.error(\"calcFileMD5WithWorker: Worker error\", data.error);\r\n+          reject(new Error(data.error));\r\n+          worker.terminate();\r\n+        }\r\n+      };\r\n+\r\n+      worker.onerror = (err) => {\r\n+        console.error(\"calcFileMD5WithWorker: Worker error\", err);\r\n+        reject(err);\r\n+        worker.terminate();\r\n+      };\r\n+\r\n+      // 发送数据到Worker\r\n+      worker.postMessage({ buffer, chunkSize }, [buffer]);\r\n+    } catch (err) {\r\n+      console.error(\"calcFileMD5WithWorker: Error creating worker\", err);\r\n+      reject(err);\r\n+    }\r\n+  });\r\n+}\r\n+\r\n+export function appendSpeedHistory(\r\n+  history: Array<{ time: number; loaded: number }>,\r\n+  time: number,\r\n+  loaded: number,\r\n+  windowSize: number\r\n+) {\r\n+  const newHistory = [...history, { time, loaded }];\r\n+  if (newHistory.length > windowSize) newHistory.shift();\r\n+  return newHistory;\r\n+}\r\n+\r\n+export function calcSpeedAndLeftTime(\r\n+  history: Array<{ time: number; loaded: number }>,\r\n+  fileSize: number\r\n+) {\r\n+  if (history.length < 2) return { speed: 0, leftTime: 0 };\r\n+  const first = history[0];\r\n+  const last = history[history.length - 1];\r\n+  const speed =\r\n+    (last.loaded - first.loaded) / ((last.time - first.time) / 1000);\r\n+  const leftBytes = fileSize - last.loaded;\r\n+  const leftTime = speed > 0 ? leftBytes / speed : 0;\r\n+  return { speed, leftTime };\r\n+}\r\n+\r\n+export function calcTotalSpeed(\r\n+  speedInfo: Record<string, { speed: number; leftTime: number }>\r\n+) {\r\n+  return Object.values(speedInfo).reduce((sum, s) => sum + (s.speed || 0), 0);\r\n+}\r\n+\r\n+export function ByteConvert(size: number): string {\r\n+  if (size < 1024) return size + \" B\";\r\n+  if (size < 1024 * 1024) return (size / 1024).toFixed(2) + \" KB\";\r\n+  if (size < 1024 * 1024 * 1024) return (size / 1024 / 1024).toFixed(2) + \" MB\";\r\n+  return (size / 1024 / 1024 / 1024).toFixed(2) + \" GB\";\r\n+}\r\n+\r\n+export function checkFileTypeSafe(file: File, allowedTypes: string[]): boolean {\r\n+  const extMime = mime.getType(file.name) || \"\";\r\n+  return allowedTypes.includes(file.type) && allowedTypes.includes(extMime);\r\n+}\r\n"
                 }
             ],
             "date": 1748436561773,
