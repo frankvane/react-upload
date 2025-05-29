@@ -129,23 +129,49 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
 
   // 上传成功/已秒传后延迟清理
   useEffect(() => {
+    // 创建一个Map来跟踪已经设置了定时器的文件，避免重复设置
+    const filesToRemove = new Map();
+
+    // 收集需要清理的文件
     filesState.forEach((meta) => {
       const key = meta.key;
       const uploading = uploadingInfo[key];
       const instant = instantInfo[key];
-      // 上传成功或已秒传
+
+      // 只处理上传成功或已秒传的文件
       if (
         (uploading && uploading.status === "done") ||
         (instant && instant.uploaded)
       ) {
-        setTimeout(async () => {
-          await removeFileMeta(key);
-          setFilesState((prev) => prev.filter((f) => f.key !== key));
-        }, 2000);
+        // 如果这个文件还没有设置过定时器，则添加到Map中
+        if (!filesToRemove.has(key)) {
+          filesToRemove.set(key, meta);
+        }
       }
     });
-    // eslint-disable-next-line
-  }, [filesState, uploadingInfo, instantInfo]);
+
+    // 创建清理定时器
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    filesToRemove.forEach((meta, key) => {
+      const timer = setTimeout(async () => {
+        try {
+          await removeFileMeta(key);
+          // 使用函数式更新，确保使用最新的状态
+          setFilesState((prevState) => prevState.filter((f) => f.key !== key));
+        } catch (error) {
+          console.error("Failed to remove file:", error);
+        }
+      }, 2000);
+
+      timers.push(timer);
+    });
+
+    // 清理函数
+    return () => {
+      timers.forEach((timer) => clearTimeout(timer));
+    };
+  }, [uploadingInfo, instantInfo]); // 只依赖上传状态和秒传状态，移除filesState依赖
 
   // 优化：本地先删，UI立刻响应
   const handleRemove = async (key: string) => {
