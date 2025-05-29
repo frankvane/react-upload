@@ -104,9 +104,6 @@ const FileSelector: React.FC<FileSelectorProps> = ({
       >
         选择文件
       </Button>
-      <span style={{ marginLeft: 12, color: "#888" }}>
-        点击或拖拽文件到此按钮
-      </span>
     </div>
   );
 };

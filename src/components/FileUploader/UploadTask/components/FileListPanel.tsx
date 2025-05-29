@@ -417,6 +417,7 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
         await handleStartUploadWithAutoMD5(metaToFile(meta));
       }
     }
+    setSelectedRowKeys([]); // 上传后自动清空选中
   };
 
   return (
