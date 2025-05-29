@@ -120,6 +120,26 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
     return () => window.removeEventListener("resize", calcHeight);
   }, []);
 
+  // 上传成功/已秒传后延迟清理
+  useEffect(() => {
+    filesState.forEach((meta) => {
+      const key = meta.key;
+      const uploading = uploadingInfo[key];
+      const instant = instantInfo[key];
+      // 上传成功或已秒传
+      if (
+        (uploading && uploading.status === "done") ||
+        (instant && instant.uploaded)
+      ) {
+        setTimeout(async () => {
+          await removeFileMeta(key);
+          setFilesState((prev) => prev.filter((f) => f.key !== key));
+        }, 2000);
+      }
+    });
+    // eslint-disable-next-line
+  }, [filesState, uploadingInfo, instantInfo]);
+
   // 优化：本地先删，UI立刻响应
   const handleRemove = async (key: string) => {
     setFilesState((prev) => prev.filter((item) => item.key !== key));
@@ -232,16 +252,6 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
             : networkChunkSize;
         const chunkCount = Math.ceil(size / realChunkSize) || 1;
         const chunks = createFileChunks(file, realChunkSize);
-        // 日志
-        console.log("record", record);
-        console.log("file", file);
-        console.log("file.size", file.size);
-        console.log("record.size", record.size);
-        console.log("size(used)", size);
-        console.log("realChunkSize", realChunkSize);
-        console.log("chunkCount", chunkCount);
-        console.log("chunks.length", chunks.length);
-        console.log("instant", instant);
         // 新增：判断所有分片都已存在且一致
         let allChunksUploaded = false;
         if (
