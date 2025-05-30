@@ -423,6 +423,33 @@ export function useFileUploadQueue({
       const key = getFileKey(file);
       setErrorInfo((prev) => ({ ...prev, [key]: "" }));
 
+      // 检查文件是否已经秒传成功
+      if (instantInfo[key]?.uploaded) {
+        // 文件已经秒传成功，直接设置状态为完成
+        setUploadingInfo((prev) => ({
+          ...prev,
+          [key]: { progress: 100, status: "done" },
+        }));
+
+        // 如果不保留上传完成的文件，则处理清理逻辑
+        if (!keepAfterUpload) {
+          // 从IndexedDB中删除数据以释放内存，但保留UI显示
+          try {
+            const { removeFileMeta } = await import("../services/dbService");
+            await removeFileMeta(key);
+          } catch (err) {
+            console.error(`删除秒传文件数据失败: ${file.name}`, err);
+          }
+
+          // 通知回调函数文件已秒传完成
+          if (onRemoveAfterUpload) {
+            await onRemoveAfterUpload(file, "instant");
+          }
+        }
+
+        return; // 秒传成功，直接返回，不执行后续上传操作
+      }
+
       // 优先使用ref中的MD5，因为它总是最新的
       const md5 =
         md5InfoRef.current[key]?.fileMD5 ||
@@ -679,6 +706,7 @@ export function useFileUploadQueue({
       removeDelayMs,
       onRemoveAfterUpload,
       apiPrefix,
+      instantInfo,
     ]
   );
 
@@ -893,6 +921,33 @@ export function useFileUploadQueue({
     async (file: File) => {
       const key = getFileKey(file);
 
+      // 检查文件是否已经秒传成功
+      if (instantInfo[key]?.uploaded) {
+        // 文件已经秒传成功，直接设置状态为完成
+        setUploadingInfo((prev) => ({
+          ...prev,
+          [key]: { progress: 100, status: "done" },
+        }));
+
+        // 如果不保留上传完成的文件，则处理清理逻辑
+        if (!keepAfterUpload) {
+          // 从IndexedDB中删除数据以释放内存，但保留UI显示
+          try {
+            const { removeFileMeta } = await import("../services/dbService");
+            await removeFileMeta(key);
+          } catch (err) {
+            console.error(`删除秒传文件数据失败: ${file.name}`, err);
+          }
+
+          // 通知回调函数文件已秒传完成
+          if (onRemoveAfterUpload) {
+            await onRemoveAfterUpload(file, "instant");
+          }
+        }
+
+        return; // 秒传成功，直接返回，不执行后续上传操作
+      }
+
       // 优先使用ref中的MD5信息
       let md5Result = md5InfoRef.current[key] || md5Info[key];
 
@@ -943,12 +998,46 @@ export function useFileUploadQueue({
         }
       }
 
-      // 只有在MD5计算成功的情况下才开始上传
+      // 再次检查文件是否已经秒传成功（可能在计算MD5后发现可以秒传）
+      if (instantInfo[key]?.uploaded) {
+        // 文件已经秒传成功，直接设置状态为完成
+        setUploadingInfo((prev) => ({
+          ...prev,
+          [key]: { progress: 100, status: "done" },
+        }));
+
+        // 如果不保留上传完成的文件，则处理清理逻辑
+        if (!keepAfterUpload) {
+          // 从IndexedDB中删除数据以释放内存，但保留UI显示
+          try {
+            const { removeFileMeta } = await import("../services/dbService");
+            await removeFileMeta(key);
+          } catch (err) {
+            console.error(`删除秒传文件数据失败: ${file.name}`, err);
+          }
+
+          // 通知回调函数文件已秒传完成
+          if (onRemoveAfterUpload) {
+            await onRemoveAfterUpload(file, "instant");
+          }
+        }
+
+        return; // 秒传成功，直接返回，不执行后续上传操作
+      }
+
+      // 只有在MD5计算成功且文件未秒传的情况下才开始上传
       if (md5Result?.fileMD5) {
         await handleStartUpload(file);
       }
     },
-    [md5Info, instantInfo, handleCalcMD5, handleStartUpload]
+    [
+      md5Info,
+      instantInfo,
+      handleCalcMD5,
+      handleStartUpload,
+      keepAfterUpload,
+      onRemoveAfterUpload,
+    ]
   );
 
   return {
