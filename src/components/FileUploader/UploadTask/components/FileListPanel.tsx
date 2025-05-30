@@ -221,7 +221,7 @@ const FileListPanel: React.FC = () => {
         dataSource={sortedFiles}
         columns={columns}
         rowKey="id"
-        pagination={sortedFiles.length > 10 ? { pageSize: 10 } : false}
+        pagination={false}
         size="middle"
       />
     </div>
