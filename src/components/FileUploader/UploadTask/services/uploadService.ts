@@ -275,6 +275,10 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
     if (instantCheckResult.uploaded) {
       // 文件已存在，直接标记为完成
       updateFileStatus(fileId, UploadStatus.INSTANT, 100);
+
+      // 秒传成功后，从 IndexedDB 中删除文件
+      await dbService.removeFileMeta(fileHash);
+
       return;
     }
 
@@ -334,8 +338,8 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
     // 更新状态为完成
     updateFileStatus(fileId, UploadStatus.DONE, 100);
 
-    // 上传成功后可以从 IndexedDB 中删除文件
-    await dbService.removeFileMeta(fileId);
+    // 上传成功后从 IndexedDB 中删除文件
+    await dbService.removeFileMeta(fileHash);
   } catch (error) {
     // 处理错误
     console.error(`文件上传失败: ${uploadFile.file.name}`, error);
