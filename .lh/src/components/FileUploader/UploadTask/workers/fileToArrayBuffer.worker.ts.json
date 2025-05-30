@@ -3,7 +3,7 @@
     "activeCommit": 0,
     "commits": [
         {
-            "activePatchIndex": 4,
+            "activePatchIndex": 11,
             "patches": [
                 {
                     "date": 1748432477532,
@@ -24,6 +24,34 @@
                 {
                     "date": 1748432997748,
                     "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,5 +1,5 @@\n-importScripts('https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js');\r\n+importScripts(\"https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js\");\r\n \r\n self.onmessage = async function (e) {\r\n   const { file } = e.data;\r\n   try {\r\n@@ -24,8 +24,8 @@\n     );\r\n   } catch (err) {\r\n     self.postMessage({\r\n       success: false,\r\n-      error: err && err.message ? err.message : '转换失败',\r\n+      error: err && err.message ? err.message : \"转换失败\",\r\n     });\r\n   }\r\n };\r\n"
+                },
+                {
+                    "date": 1748609029168,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,11 +1,26 @@\n+/* eslint-disable no-restricted-globals */\r\n+// @ts-ignore\r\n importScripts(\"https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js\");\r\n \r\n-self.onmessage = async function (e) {\r\n-  const { file } = e.data;\r\n+// 声明全局 SparkMD5\r\n+declare global {\r\n+  interface Window {\r\n+    SparkMD5: {\r\n+      ArrayBuffer: new () => {\r\n+        append: (buffer: ArrayBuffer) => void;\r\n+        end: () => string;\r\n+      };\r\n+    };\r\n+  }\r\n+}\r\n+\r\n+self.onmessage = async function (e: MessageEvent) {\r\n+  const { file } = e.data as { file: File };\r\n   try {\r\n     const buffer = await file.arrayBuffer();\r\n     // 生成md5\r\n+    // @ts-ignore - 使用 self.SparkMD5\r\n     const spark = new self.SparkMD5.ArrayBuffer();\r\n     spark.append(buffer);\r\n     const md5 = spark.end();\r\n     self.postMessage(\r\n@@ -19,11 +34,12 @@\n           type: file.type,\r\n           lastModified: file.lastModified,\r\n         },\r\n       },\r\n+      // @ts-ignore - 传输 ArrayBuffer\r\n       [buffer]\r\n     );\r\n-  } catch (err) {\r\n+  } catch (err: any) {\r\n     self.postMessage({\r\n       success: false,\r\n       error: err && err.message ? err.message : \"转换失败\",\r\n     });\r\n"
+                },
+                {
+                    "date": 1748609045376,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,6 +1,6 @@\n /* eslint-disable no-restricted-globals */\r\n-// @ts-ignore\r\n+// @ts-expect-error - importScripts 在 Web Worker 中可用\r\n importScripts(\"https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js\");\r\n \r\n // 声明全局 SparkMD5\r\n declare global {\r\n@@ -18,9 +18,9 @@\n   const { file } = e.data as { file: File };\r\n   try {\r\n     const buffer = await file.arrayBuffer();\r\n     // 生成md5\r\n-    // @ts-ignore - 使用 self.SparkMD5\r\n+    // @ts-expect-error - 使用 self.SparkMD5\r\n     const spark = new self.SparkMD5.ArrayBuffer();\r\n     spark.append(buffer);\r\n     const md5 = spark.end();\r\n     self.postMessage(\r\n@@ -34,9 +34,9 @@\n           type: file.type,\r\n           lastModified: file.lastModified,\r\n         },\r\n       },\r\n-      // @ts-ignore - 传输 ArrayBuffer\r\n+      // @ts-expect-error - 传输 ArrayBuffer\r\n       [buffer]\r\n     );\r\n   } catch (err: any) {\r\n     self.postMessage({\r\n"
+                },
+                {
+                    "date": 1748609243305,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,27 +1,16 @@\n /* eslint-disable no-restricted-globals */\r\n-// @ts-expect-error - importScripts 在 Web Worker 中可用\r\n-importScripts(\"https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js\");\r\n+// 使用 ES 模块导入 spark-md5\r\n \r\n-// 声明全局 SparkMD5\r\n-declare global {\r\n-  interface Window {\r\n-    SparkMD5: {\r\n-      ArrayBuffer: new () => {\r\n-        append: (buffer: ArrayBuffer) => void;\r\n-        end: () => string;\r\n-      };\r\n-    };\r\n-  }\r\n-}\r\n+import SparkMD5 from \"spark-md5\";\r\n \r\n+// 处理文件并计算 MD5\r\n self.onmessage = async function (e: MessageEvent) {\r\n   const { file } = e.data as { file: File };\r\n   try {\r\n     const buffer = await file.arrayBuffer();\r\n     // 生成md5\r\n-    // @ts-expect-error - 使用 self.SparkMD5\r\n-    const spark = new self.SparkMD5.ArrayBuffer();\r\n+    const spark = new SparkMD5.ArrayBuffer();\r\n     spark.append(buffer);\r\n     const md5 = spark.end();\r\n     self.postMessage(\r\n       {\r\n"
+                },
+                {
+                    "date": 1748609261072,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -9,8 +9,9 @@\n   try {\r\n     const buffer = await file.arrayBuffer();\r\n     // 生成md5\r\n     const spark = new SparkMD5.ArrayBuffer();\r\n+    // @ts-expect-error - spark-md5 类型定义与实际使用不匹配\r\n     spark.append(buffer);\r\n     const md5 = spark.end();\r\n     self.postMessage(\r\n       {\r\n"
+                },
+                {
+                    "date": 1748609376479,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,17 +1,27 @@\n /* eslint-disable no-restricted-globals */\r\n-// 使用 ES 模块导入 spark-md5\r\n+// 在非模块类型的 Worker 中使用 importScripts\r\n+// @ts-ignore\r\n+importScripts(\"https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js\");\r\n \r\n-import SparkMD5 from \"spark-md5\";\r\n+// 声明全局 SparkMD5\r\n+declare global {\r\n+  // @ts-ignore\r\n+  const SparkMD5: {\r\n+    ArrayBuffer: new () => {\r\n+      append: (buffer: ArrayBuffer) => void;\r\n+      end: () => string;\r\n+    };\r\n+  };\r\n+}\r\n \r\n // 处理文件并计算 MD5\r\n self.onmessage = async function (e: MessageEvent) {\r\n   const { file } = e.data as { file: File };\r\n   try {\r\n     const buffer = await file.arrayBuffer();\r\n     // 生成md5\r\n     const spark = new SparkMD5.ArrayBuffer();\r\n-    // @ts-expect-error - spark-md5 类型定义与实际使用不匹配\r\n     spark.append(buffer);\r\n     const md5 = spark.end();\r\n     self.postMessage(\r\n       {\r\n"
+                },
+                {
+                    "date": 1748609397070,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,12 +1,12 @@\n /* eslint-disable no-restricted-globals */\r\n // 在非模块类型的 Worker 中使用 importScripts\r\n-// @ts-ignore\r\n+// @ts-expect-error - importScripts 在 TypeScript 中没有类型定义\r\n importScripts(\"https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js\");\r\n \r\n // 声明全局 SparkMD5\r\n declare global {\r\n-  // @ts-ignore\r\n+  // @ts-expect-error - 全局 SparkMD5 类型定义\r\n   const SparkMD5: {\r\n     ArrayBuffer: new () => {\r\n       append: (buffer: ArrayBuffer) => void;\r\n       end: () => string;\r\n"
+                },
+                {
+                    "date": 1748609416684,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -4,9 +4,8 @@\n importScripts(\"https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js\");\r\n \r\n // 声明全局 SparkMD5\r\n declare global {\r\n-  // @ts-expect-error - 全局 SparkMD5 类型定义\r\n   const SparkMD5: {\r\n     ArrayBuffer: new () => {\r\n       append: (buffer: ArrayBuffer) => void;\r\n       end: () => string;\r\n"
                 }
             ],
             "date": 1748432477532,

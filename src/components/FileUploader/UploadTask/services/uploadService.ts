@@ -350,9 +350,26 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
 
 // 将文件添加到上传队列
 export const addFileToQueue = (fileId: string): void => {
-  const { updateFileStatus } = useUploadStore.getState();
+  const { uploadFiles, updateFileStatus } = useUploadStore.getState();
+
+  // 查找文件
+  const file = uploadFiles.find((f) => f.id === fileId);
+  if (!file) return;
+
+  // 如果文件已经在队列中或已完成，则不再添加
+  if (
+    file.status !== UploadStatus.QUEUED_FOR_UPLOAD &&
+    file.status !== UploadStatus.ERROR &&
+    file.status !== UploadStatus.MERGE_ERROR
+  ) {
+    return;
+  }
+
+  // 将文件添加到上传队列
   uploadQueue.add(() => processFileUpload(fileId));
-  updateFileStatus(fileId, UploadStatus.QUEUED); // 进入p-queue队列后状态变为QUEUED
+
+  // 更新文件状态为 QUEUED（已进入队列）
+  updateFileStatus(fileId, UploadStatus.QUEUED);
 };
 
 // 重试上传

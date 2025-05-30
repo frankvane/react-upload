@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { UploadOutlined } from "@ant-design/icons";
 import type { UploadProps } from "antd";
 import { addFileToQueue } from "../services/uploadService";
+import { processFileWithWorker } from "../utils/fileUtils";
 import { useUploadStore } from "../store/uploadStore";
 
 interface FileSelectorProps {
@@ -20,11 +21,14 @@ const FileSelector: React.FC<FileSelectorProps> = ({
   maxCount,
 }) => {
   const [dragging, setDragging] = useState(false);
+  const [processing, setProcessing] = useState(false);
   const addFile = useUploadStore((state) => state.addFile);
 
-  const handleFileSelect = (files: FileList | null) => {
+  const handleFileSelect = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
+    if (processing) return;
 
+    setProcessing(true);
     const fileArray = Array.from(files);
     const maxSizeBytes = maxSize * 1024 * 1024;
 
@@ -37,14 +41,54 @@ const FileSelector: React.FC<FileSelectorProps> = ({
       return true;
     });
 
-    // 添加文件到 store 并加入上传队列
-    validFiles.forEach((file) => {
-      const fileId = addFile(file);
-      addFileToQueue(fileId);
-    });
+    if (validFiles.length === 0) {
+      setProcessing(false);
+      return;
+    }
 
-    if (validFiles.length > 0) {
-      message.success(`已添加 ${validFiles.length} 个文件到上传队列`);
+    message.loading(`正在处理 ${validFiles.length} 个文件...`, 0);
+
+    try {
+      // 使用 Promise.all 并行处理所有文件
+      const processPromises = validFiles.map(async (file) => {
+        try {
+          // 添加文件到 store，状态为 QUEUED_FOR_UPLOAD
+          const fileId = addFile(file);
+
+          // 使用 Web Worker 处理文件并存储到 IndexedDB
+          await processFileWithWorker(file);
+
+          // 返回文件 ID
+          return fileId;
+        } catch (error: any) {
+          console.error(`处理文件 ${file.name} 失败:`, error);
+          message.error(
+            `文件 ${file.name} 处理失败: ${error.message || "未知错误"}`
+          );
+          return null;
+        }
+      });
+
+      // 等待所有文件处理完成
+      const fileIds = await Promise.all(processPromises);
+
+      // 过滤掉处理失败的文件
+      const successFileIds = fileIds.filter((id) => id !== null) as string[];
+
+      // 将成功处理的文件添加到上传队列
+      successFileIds.forEach((fileId) => {
+        addFileToQueue(fileId);
+      });
+
+      message.destroy();
+      if (successFileIds.length > 0) {
+        message.success(`已添加 ${successFileIds.length} 个文件到上传队列`);
+      }
+    } catch (error) {
+      console.error("处理文件时发生错误:", error);
+      message.error("处理文件时发生错误");
+    } finally {
+      setProcessing(false);
     }
   };
 
@@ -78,14 +122,14 @@ const FileSelector: React.FC<FileSelectorProps> = ({
   // 使用 Ant Design 的 Upload 组件
   const uploadProps: UploadProps = {
     beforeUpload: (file) => {
-      const fileId = addFile(file);
-      addFileToQueue(fileId);
+      handleFileSelect([file] as unknown as FileList);
       return false; // 阻止 Upload 组件默认上传行为
     },
     multiple,
     accept,
     showUploadList: false,
     maxCount,
+    disabled: processing,
   };
 
   return (
@@ -99,7 +143,12 @@ const FileSelector: React.FC<FileSelectorProps> = ({
       }}
     >
       <Upload {...uploadProps}>
-        <Button icon={<UploadOutlined />} size="large" type="primary">
+        <Button
+          icon={<UploadOutlined />}
+          size="large"
+          type="primary"
+          loading={processing}
+        >
           选择文件
         </Button>
       </Upload>
@@ -116,13 +165,17 @@ const FileSelector: React.FC<FileSelectorProps> = ({
           marginTop: "16px",
           transition: "all 0.3s",
           backgroundColor: dragging ? "rgba(24, 144, 255, 0.1)" : "transparent",
+          opacity: processing ? 0.6 : 1,
+          pointerEvents: processing ? "none" : "auto",
         }}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
-        <p style={{ color: "#666", margin: 0 }}>或将文件拖放到此处</p>
+        <p style={{ color: "#666", margin: 0 }}>
+          {processing ? "正在处理文件..." : "或将文件拖放到此处"}
+        </p>
       </div>
     </div>
   );
