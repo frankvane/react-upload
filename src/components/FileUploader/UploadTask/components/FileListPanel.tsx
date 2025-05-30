@@ -67,21 +67,42 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
       ? uploadConfig.chunkSize
       : 2 * 1024 * 1024;
 
+  // 从上下文中获取keepAfterUpload和removeDelayMs设置
+  const keepAfterUpload =
+    typeof uploadConfig?.keepAfterUpload === "boolean"
+      ? uploadConfig.keepAfterUpload
+      : true; // 默认为true
+  const removeDelayMs =
+    typeof uploadConfig?.removeDelayMs === "number"
+      ? uploadConfig.removeDelayMs
+      : 2000; // 默认为2000ms
+
   const {
+    files,
+    setFiles,
     md5Info,
     instantInfo,
     uploadingInfo,
+    loadingKey,
+    uploadingAll,
     speedInfo,
     errorInfo,
-    uploadingAll,
-    handleStartUploadWithAutoMD5,
-    handleRetry,
-    setFiles,
+    handleCalcMD5,
+    handleStartUpload,
     handleStartAll,
+    handleRetry,
+    handleRetryAllFailed,
+    handleStartUploadWithAutoMD5,
   } = useFileUploadQueue({
     apiPrefix: DEFAULT_API_PREFIX,
     chunkSize: networkChunkSize,
     concurrency: chunkConcurrency,
+    keepAfterUpload: keepAfterUpload, // 使用上下文中的值
+    removeDelayMs: removeDelayMs, // 使用上下文中的值
+    onRemoveAfterUpload: async (file, reason) => {
+      console.log(`[FileListPanel] 文件已移除: ${file.name}, 原因: ${reason}`);
+      return true; // 允许移除
+    },
   });
 
   const totalSpeed = Object.values(speedInfo).reduce(

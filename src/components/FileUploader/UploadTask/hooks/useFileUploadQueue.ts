@@ -506,7 +506,10 @@ export function useFileUploadQueue({
                     {
                       fileId,
                       // 如果没有MD5信息，传null或空字符串
-                      chunk_md5: md5Info[key]?.chunkMD5s?.[chunk.index] || "",
+                      chunk_md5:
+                        md5InfoRef.current[key]?.chunkMD5s?.[chunk.index] ||
+                        md5Info[key]?.chunkMD5s?.[chunk.index] ||
+                        "",
                       index: chunk.index,
                       chunk: chunk.chunk,
                       name: file.name,
@@ -625,18 +628,56 @@ export function useFileUploadQueue({
         if (onMergeSuccess) onMergeSuccess(file, mergeResult);
         if (onSuccess) onSuccess(file, mergeResult);
 
-        // 自动移除已上传文件
+        // 文件上传完成后立即处理清理逻辑，不等待所有文件上传完成
         if (!keepAfterUpload) {
-          setTimeout(async () => {
-            let shouldRemove = true;
-            if (onRemoveAfterUpload) {
-              const ret = await onRemoveAfterUpload(file, "upload");
-              if (ret === false) shouldRemove = false;
+          console.log(
+            `[清理开始] 文件上传完成，准备清理: ${file.name}, key=${key}`
+          );
+          // 立即从列表中移除
+          console.log(`[清理] 准备从文件列表中移除: ${file.name}`);
+          setFiles((prev) => {
+            const newFiles = prev.filter((f) => getFileKey(f) !== key);
+            console.log(
+              `[清理] 文件列表更新: 从 ${prev.length} 减少到 ${newFiles.length}`
+            );
+            return newFiles;
+          });
+
+          // 如果有回调函数，执行回调
+          if (onRemoveAfterUpload) {
+            console.log(
+              `[清理] 调用回调函数: onRemoveAfterUpload, file=${file.name}`
+            );
+            const shouldRemove = await onRemoveAfterUpload(file, "upload");
+            if (shouldRemove === false) {
+              console.log(`[清理中止] 回调阻止了文件删除: ${file.name}`);
+              return;
             }
-            if (shouldRemove) {
-              setFiles((prev) => prev.filter((f) => getFileKey(f) !== key));
-            }
-          }, removeDelayMs);
+            console.log(`[清理] 回调函数执行完成，继续删除: ${file.name}`);
+          }
+
+          // 从IndexedDB中删除
+          try {
+            console.log(
+              `[清理] 准备从数据库中删除文件: ${file.name}, key=${key}`
+            );
+            // 这里需要导入removeFileMeta函数
+            const { removeFileMeta } = await import("../services/dbService");
+            await removeFileMeta(key);
+            console.log(
+              `[清理完成] 已从数据库中删除文件: ${file.name}, key=${key}`
+            );
+          } catch (err) {
+            console.error(
+              `[清理错误] 删除文件数据失败: ${file.name}, key=${key}`,
+              err
+            );
+          }
+          console.log(`[清理流程结束] 文件: ${file.name}`);
+        } else {
+          console.log(
+            `[保留] 文件上传完成但保留在列表中: ${file.name} (keepAfterUpload=${keepAfterUpload})`
+          );
         }
       } catch (err: any) {
         setUploadingInfo((prev) => ({
@@ -724,8 +765,8 @@ export function useFileUploadQueue({
 
       // 活跃处理中的文件数量
       let activeCount = 0;
-      // 已完成的文件数量
-      let completedCount = 0;
+      // 已完成的文件数量（仅用于日志记录）
+      let processedCount = 0;
 
       // 处理单个完整文件流程（MD5计算+上传）
       const processCompleteFile = async (file: File): Promise<void> => {
@@ -793,6 +834,64 @@ export function useFileUploadQueue({
           // 如果已经秒传，就不执行上传
           if (instantInfo[key]?.uploaded) {
             console.log(`文件已秒传: ${file.name}`);
+
+            // 秒传也需要立即处理清理逻辑
+            if (!keepAfterUpload) {
+              console.log(
+                `[秒传清理开始] 文件秒传完成，准备清理: ${file.name}, key=${key}`
+              );
+              // 立即从列表中移除
+              console.log(`[秒传清理] 准备从文件列表中移除: ${file.name}`);
+              setFiles((prev) => {
+                const newFiles = prev.filter((f) => getFileKey(f) !== key);
+                console.log(
+                  `[秒传清理] 文件列表更新: 从 ${prev.length} 减少到 ${newFiles.length}`
+                );
+                return newFiles;
+              });
+
+              // 如果有回调函数，执行回调
+              if (onRemoveAfterUpload) {
+                console.log(
+                  `[秒传清理] 调用回调函数: onRemoveAfterUpload, file=${file.name}`
+                );
+                const shouldRemove = await onRemoveAfterUpload(file, "instant");
+                if (shouldRemove === false) {
+                  console.log(
+                    `[秒传清理中止] 回调阻止了秒传文件删除: ${file.name}`
+                  );
+                  return;
+                }
+                console.log(
+                  `[秒传清理] 回调函数执行完成，继续删除: ${file.name}`
+                );
+              }
+
+              // 从IndexedDB中删除
+              try {
+                console.log(
+                  `[秒传清理] 准备从数据库中删除秒传文件: ${file.name}, key=${key}`
+                );
+                // 这里需要导入removeFileMeta函数
+                const { removeFileMeta } = await import(
+                  "../services/dbService"
+                );
+                await removeFileMeta(key);
+                console.log(
+                  `[秒传清理完成] 已从数据库中删除秒传文件: ${file.name}, key=${key}`
+                );
+              } catch (err) {
+                console.error(
+                  `[秒传清理错误] 删除秒传文件数据失败: ${file.name}, key=${key}`,
+                  err
+                );
+              }
+              console.log(`[秒传清理流程结束] 文件: ${file.name}`);
+            } else {
+              console.log(
+                `[秒传保留] 文件秒传完成但保留在列表中: ${file.name} (keepAfterUpload=${keepAfterUpload})`
+              );
+            }
           } else if (md5Result?.fileMD5) {
             // 只有在MD5计算成功的情况下才开始上传
             console.log(`开始上传文件: ${file.name}, MD5=${md5Result.fileMD5}`);
@@ -806,14 +905,14 @@ export function useFileUploadQueue({
         } finally {
           // 无论成功失败，都将活跃计数减一，并尝试处理队列中的下一个文件
           activeCount--;
-          completedCount++;
+          processedCount++;
 
           // 步骤3: 从队列中取出下一个文件进行处理
           if (pendingQueue.length > 0) {
             startNextFile();
-          } else if (completedCount === files.length) {
-            // 所有文件都处理完成
-            console.log("所有文件处理完成");
+          } else if (activeCount === 0) {
+            // 所有文件都处理完成，包括活跃中的文件
+            console.log(`所有文件处理完成，共处理 ${processedCount} 个文件`);
             setUploadingAll(false);
           }
         }

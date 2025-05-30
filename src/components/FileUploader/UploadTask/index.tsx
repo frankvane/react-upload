@@ -37,7 +37,14 @@ const UploadTask: React.FC = () => {
 
   return (
     <UploadConfigContext.Provider
-      value={{ networkType, fileConcurrency, chunkConcurrency, chunkSize }}
+      value={{
+        networkType,
+        fileConcurrency,
+        chunkConcurrency,
+        chunkSize,
+        keepAfterUpload: false,
+        removeDelayMs: 0,
+      }}
     >
       <h2>文件批量上传任务</h2>
       <FileSelector onProgress={handleProgress} />
