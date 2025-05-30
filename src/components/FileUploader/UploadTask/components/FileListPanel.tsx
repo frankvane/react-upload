@@ -92,6 +92,25 @@ const FileListPanel: React.FC = () => {
     return [...uploadFiles].sort((a, b) => b.createdAt - a.createdAt);
   }, [uploadFiles]);
 
+  // 检查是否有正在上传的文件
+  const hasUploadingFiles = React.useMemo(() => {
+    return uploadFiles.some(
+      (file) =>
+        file.status === UploadStatus.QUEUED ||
+        file.status === UploadStatus.CALCULATING ||
+        file.status === UploadStatus.UPLOADING
+    );
+  }, [uploadFiles]);
+
+  // 检查是否有失败的文件
+  const failedFiles = React.useMemo(() => {
+    return uploadFiles.filter(
+      (file) =>
+        file.status === UploadStatus.ERROR ||
+        file.status === UploadStatus.MERGE_ERROR
+    );
+  }, [uploadFiles]);
+
   const handleRetry = useCallback((fileId: string) => {
     retryUpload(fileId);
   }, []);
@@ -110,6 +129,13 @@ const FileListPanel: React.FC = () => {
   const handleClearCompleted = useCallback(() => {
     clearCompleted();
   }, [clearCompleted]);
+
+  // 重试所有失败的文件
+  const handleRetryAllFailed = useCallback(() => {
+    failedFiles.forEach((file) => {
+      retryUpload(file.id);
+    });
+  }, [failedFiles]);
 
   const columns = React.useMemo(
     () => [
@@ -238,11 +264,29 @@ const FileListPanel: React.FC = () => {
         }}
       >
         <h3 style={{ margin: 0 }}>上传列表 ({sortedFiles.length})</h3>
-        {hasCompletedFiles && (
-          <Button type="link" onClick={handleClearCompleted} size="small">
-            清除已完成
-          </Button>
-        )}
+        <Space>
+          {failedFiles.length > 0 && (
+            <Button
+              type="link"
+              icon={<ReloadOutlined />}
+              onClick={handleRetryAllFailed}
+              size="small"
+              disabled={hasUploadingFiles}
+            >
+              全部重试 ({failedFiles.length})
+            </Button>
+          )}
+          {hasCompletedFiles && (
+            <Button
+              type="link"
+              onClick={handleClearCompleted}
+              size="small"
+              disabled={hasUploadingFiles}
+            >
+              清除已完成
+            </Button>
+          )}
+        </Space>
       </div>
 
       <Table

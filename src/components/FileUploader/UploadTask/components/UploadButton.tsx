@@ -108,7 +108,7 @@ const UploadButton: React.FC = () => {
         danger
         icon={<DeleteOutlined />}
         onClick={handleClearQueue}
-        disabled={uploadFiles.length === 0}
+        disabled={uploadFiles.length === 0 || uploadingFiles.length > 0}
       >
         清空队列
       </Button>
