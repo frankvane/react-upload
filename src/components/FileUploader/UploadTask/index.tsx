@@ -4,7 +4,7 @@ import {
   PauseCircleOutlined,
   PlayCircleOutlined,
 } from "@ant-design/icons";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   clearQueue,
   getQueueStats,
@@ -15,6 +15,7 @@ import {
 import FileListPanel from "./components/FileListPanel";
 import FileSelector from "./components/FileSelector";
 import UploadButton from "./components/UploadButton";
+import { useUploadStore } from "./store/uploadStore";
 
 interface UploadTaskProps {
   title?: string;
@@ -32,6 +33,14 @@ const UploadTask: React.FC<UploadTaskProps> = ({
   maxCount,
 }) => {
   const [queuePaused, setQueuePaused] = useState<boolean>(false);
+  const initializeFromIndexedDB = useUploadStore(
+    (state) => state.initializeFromIndexedDB
+  );
+
+  // 在组件挂载时从 IndexedDB 加载文件列表
+  useEffect(() => {
+    initializeFromIndexedDB();
+  }, [initializeFromIndexedDB]);
 
   // 暂停/恢复上传队列
   const toggleQueuePause = () => {
