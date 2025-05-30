@@ -291,9 +291,6 @@ export function useFileUploadQueue({
         // 执行带进度的MD5计算
         const result = await calcMD5WithProgress();
 
-        // 输出调试信息，确认MD5计算结果
-        console.log(`MD5计算成功 - ${file.name}:`, result.fileMD5);
-
         // 更新MD5信息 - 使用函数式更新确保状态正确设置
         setMd5Info((prev) => {
           const newState = { ...prev };
@@ -343,7 +340,6 @@ export function useFileUploadQueue({
         setMd5Info((prev) => {
           // 如果MD5信息不存在，重新设置一次
           if (!prev[getFileKey(file)]) {
-            console.log(`修复丢失的MD5信息 - ${file.name}`);
             return { ...prev, [getFileKey(file)]: result };
           }
           return prev;
@@ -630,54 +626,25 @@ export function useFileUploadQueue({
 
         // 文件上传完成后立即处理清理逻辑，不等待所有文件上传完成
         if (!keepAfterUpload) {
-          console.log(
-            `[清理开始] 文件上传完成，准备清理: ${file.name}, key=${key}`
-          );
-          // 立即从列表中移除
-          console.log(`[清理] 准备从文件列表中移除: ${file.name}`);
-          setFiles((prev) => {
-            const newFiles = prev.filter((f) => getFileKey(f) !== key);
-            console.log(
-              `[清理] 文件列表更新: 从 ${prev.length} 减少到 ${newFiles.length}`
-            );
-            return newFiles;
-          });
-
-          // 如果有回调函数，执行回调
-          if (onRemoveAfterUpload) {
-            console.log(
-              `[清理] 调用回调函数: onRemoveAfterUpload, file=${file.name}`
-            );
-            const shouldRemove = await onRemoveAfterUpload(file, "upload");
-            if (shouldRemove === false) {
-              console.log(`[清理中止] 回调阻止了文件删除: ${file.name}`);
-              return;
-            }
-            console.log(`[清理] 回调函数执行完成，继续删除: ${file.name}`);
-          }
-
-          // 从IndexedDB中删除
+          // 从IndexedDB中删除数据以释放内存，但保留UI显示
           try {
-            console.log(
-              `[清理] 准备从数据库中删除文件: ${file.name}, key=${key}`
-            );
             // 这里需要导入removeFileMeta函数
             const { removeFileMeta } = await import("../services/dbService");
             await removeFileMeta(key);
-            console.log(
-              `[清理完成] 已从数据库中删除文件: ${file.name}, key=${key}`
-            );
           } catch (err) {
-            console.error(
-              `[清理错误] 删除文件数据失败: ${file.name}, key=${key}`,
-              err
-            );
+            console.error(`删除文件数据失败: ${file.name}`, err);
           }
-          console.log(`[清理流程结束] 文件: ${file.name}`);
-        } else {
-          console.log(
-            `[保留] 文件上传完成但保留在列表中: ${file.name} (keepAfterUpload=${keepAfterUpload})`
-          );
+
+          // 标记此文件已完成上传，但暂不从UI列表中移除
+          // 通知回调函数文件已上传完成
+          if (onRemoveAfterUpload) {
+            // 仅调用回调函数，但忽略返回值，不执行移除操作
+            await onRemoveAfterUpload(file, "upload");
+            // 注意：这里不再检查返回值并执行移除操作
+          }
+
+          // 注意：此处不再立即从files列表中移除文件
+          // 文件将在批量上传完成后统一清理
         }
       } catch (err: any) {
         setUploadingInfo((prev) => ({
@@ -761,32 +728,24 @@ export function useFileUploadQueue({
         return;
       }
 
-      console.log(`待处理文件总数: ${pendingQueue.length}`);
-
       // 活跃处理中的文件数量
       let activeCount = 0;
-      // 已完成的文件数量（仅用于日志记录）
-      let processedCount = 0;
 
       // 处理单个完整文件流程（MD5计算+上传）
       const processCompleteFile = async (file: File): Promise<void> => {
         const key = getFileKey(file);
-        console.log(`开始完整处理文件: ${file.name}, key=${key}`);
 
         try {
           // 步骤1: 计算MD5，最多重试2次
           let md5Result = md5InfoRef.current[key] || md5Info[key];
 
           if (!md5Result?.fileMD5) {
-            console.log(`开始计算MD5: ${file.name}`);
-
             // 添加重试机制
             let retryCount = 0;
             let md5Success = false;
 
             while (retryCount < 2 && !md5Success) {
               if (retryCount > 0) {
-                console.log(`MD5计算重试 #${retryCount}: ${file.name}`);
                 // 重试前等待一小段时间
                 await new Promise((r) => setTimeout(r, 500));
               }
@@ -796,16 +755,8 @@ export function useFileUploadQueue({
                 md5Result = await handleCalcMD5(file);
 
                 // 检查MD5是否计算成功
-                console.log(
-                  `检查MD5计算结果 - ${file.name}:`,
-                  md5Result?.fileMD5 || "未找到"
-                );
-
                 if (md5Result?.fileMD5) {
                   md5Success = true;
-                  console.log(
-                    `MD5计算完成: ${file.name}, MD5=${md5Result.fileMD5}`
-                  );
                 } else {
                   throw new Error("MD5计算结果为空");
                 }
@@ -825,94 +776,72 @@ export function useFileUploadQueue({
                 }
               }
             }
-          } else {
-            console.log(
-              `文件已有MD5，跳过计算: ${file.name}, MD5=${md5Result.fileMD5}`
-            );
           }
 
           // 如果已经秒传，就不执行上传
           if (instantInfo[key]?.uploaded) {
-            console.log(`文件已秒传: ${file.name}`);
-
             // 秒传也需要立即处理清理逻辑
             if (!keepAfterUpload) {
-              console.log(
-                `[秒传清理开始] 文件秒传完成，准备清理: ${file.name}, key=${key}`
-              );
-              // 立即从列表中移除
-              console.log(`[秒传清理] 准备从文件列表中移除: ${file.name}`);
-              setFiles((prev) => {
-                const newFiles = prev.filter((f) => getFileKey(f) !== key);
-                console.log(
-                  `[秒传清理] 文件列表更新: 从 ${prev.length} 减少到 ${newFiles.length}`
-                );
-                return newFiles;
-              });
-
-              // 如果有回调函数，执行回调
-              if (onRemoveAfterUpload) {
-                console.log(
-                  `[秒传清理] 调用回调函数: onRemoveAfterUpload, file=${file.name}`
-                );
-                const shouldRemove = await onRemoveAfterUpload(file, "instant");
-                if (shouldRemove === false) {
-                  console.log(
-                    `[秒传清理中止] 回调阻止了秒传文件删除: ${file.name}`
-                  );
-                  return;
-                }
-                console.log(
-                  `[秒传清理] 回调函数执行完成，继续删除: ${file.name}`
-                );
-              }
-
-              // 从IndexedDB中删除
+              // 从IndexedDB中删除数据以释放内存，但保留UI显示
               try {
-                console.log(
-                  `[秒传清理] 准备从数据库中删除秒传文件: ${file.name}, key=${key}`
-                );
                 // 这里需要导入removeFileMeta函数
                 const { removeFileMeta } = await import(
                   "../services/dbService"
                 );
                 await removeFileMeta(key);
-                console.log(
-                  `[秒传清理完成] 已从数据库中删除秒传文件: ${file.name}, key=${key}`
-                );
               } catch (err) {
-                console.error(
-                  `[秒传清理错误] 删除秒传文件数据失败: ${file.name}, key=${key}`,
-                  err
-                );
+                console.error(`删除秒传文件数据失败: ${file.name}`, err);
               }
-              console.log(`[秒传清理流程结束] 文件: ${file.name}`);
-            } else {
-              console.log(
-                `[秒传保留] 文件秒传完成但保留在列表中: ${file.name} (keepAfterUpload=${keepAfterUpload})`
-              );
+
+              // 通知回调函数文件已秒传完成，但不执行移除操作
+              if (onRemoveAfterUpload) {
+                await onRemoveAfterUpload(file, "instant");
+                // 注意：这里不再检查返回值并执行移除操作
+              }
+
+              // 注意：此处不再立即从files列表中移除文件
             }
           } else if (md5Result?.fileMD5) {
             // 只有在MD5计算成功的情况下才开始上传
-            console.log(`开始上传文件: ${file.name}, MD5=${md5Result.fileMD5}`);
             await handleStartUpload(file);
-            console.log(`文件上传完成: ${file.name}`);
-          } else {
-            console.log(`无法上传: ${file.name}，MD5计算失败`);
           }
         } catch (error) {
           console.error(`处理文件失败: ${file.name}`, error);
         } finally {
           // 无论成功失败，都将活跃计数减一，并尝试处理队列中的下一个文件
           activeCount--;
-          processedCount++;
 
           // 步骤3: 从队列中取出下一个文件进行处理
           if (pendingQueue.length > 0) {
             startNextFile();
           } else if (activeCount === 0) {
             // 所有文件都处理完成，包括活跃中的文件
-            console.log(`所有文件处理完成，共处理 ${processedCount} 个文件`);
+
+            // 批量上传全部完成后，清理所有已上传/已秒传的文件
+            if (!keepAfterUpload) {
+              // 找出所有已上传或已秒传的文件
+              const filesToRemove = files.filter((file) => {
+                const key = getFileKey(file);
+                return (
+                  uploadingInfo[key]?.status === "done" ||
+                  instantInfo[key]?.uploaded
+                );
+              });
+
+              // 从UI列表中移除这些文件
+              if (filesToRemove.length > 0) {
+                setFiles((prev) =>
+                  prev.filter((file) => {
+                    const key = getFileKey(file);
+                    return !(
+                      uploadingInfo[key]?.status === "done" ||
+                      instantInfo[key]?.uploaded
+                    );
+                  })
+                );
+              }
+            }
+
             setUploadingAll(false);
           }
         }
@@ -927,10 +856,6 @@ export function useFileUploadQueue({
         const nextFile = pendingQueue.shift()!;
         activeCount++;
 
-        console.log(
-          `开始处理文件: ${nextFile.name} (${activeCount}/${fileConcurrency})`
-        );
-
         // 使用setTimeout避免调用栈过深
         setTimeout(() => {
           processCompleteFile(nextFile).catch((err) => {
@@ -941,7 +866,6 @@ export function useFileUploadQueue({
 
       // 初始启动并发数量的文件处理
       const initialBatchSize = Math.min(fileConcurrency, pendingQueue.length);
-      console.log(`初始批次启动: ${initialBatchSize}个文件`);
 
       for (let i = 0; i < initialBatchSize; i++) {
         startNextFile();
@@ -958,13 +882,13 @@ export function useFileUploadQueue({
     handleCalcMD5,
     handleStartUpload,
     fileConcurrency,
+    keepAfterUpload,
   ]);
 
   // 单个文件上传按钮自动补齐MD5
   const handleStartUploadWithAutoMD5 = useCallback(
     async (file: File) => {
       const key = getFileKey(file);
-      console.log(`单文件上传开始处理: ${file.name}, key=${key}`);
 
       // 优先使用ref中的MD5信息
       let md5Result = md5InfoRef.current[key] || md5Info[key];
@@ -976,7 +900,8 @@ export function useFileUploadQueue({
 
         while (retryCount < 2 && !md5Success) {
           if (retryCount > 0) {
-            console.log(`MD5计算重试 #${retryCount}: ${file.name}`);
+            // 重试前短暂等待
+            await new Promise((r) => setTimeout(r, 500));
           }
 
           try {
@@ -984,16 +909,8 @@ export function useFileUploadQueue({
             md5Result = await handleCalcMD5(file);
 
             // 检查MD5是否计算成功
-            console.log(
-              `检查单文件MD5计算结果 - ${file.name}:`,
-              md5Result?.fileMD5 || "未找到"
-            );
-
             if (md5Result?.fileMD5) {
               md5Success = true;
-              console.log(
-                `单文件MD5计算成功: ${file.name}, MD5=${md5Result.fileMD5}`
-              );
             } else {
               throw new Error("MD5计算结果为空");
             }
@@ -1021,18 +938,11 @@ export function useFileUploadQueue({
             await new Promise((r) => setTimeout(r, 500));
           }
         }
-      } else {
-        console.log(
-          `单文件已有MD5，跳过计算: ${file.name}, MD5=${md5Result.fileMD5}`
-        );
       }
 
       // 只有在MD5计算成功的情况下才开始上传
       if (md5Result?.fileMD5) {
-        console.log(`开始单文件上传: ${file.name}, MD5=${md5Result.fileMD5}`);
         await handleStartUpload(file);
-      } else {
-        console.log(`无法上传单文件: ${file.name}，MD5计算失败`);
       }
     },
     [md5Info, instantInfo, handleCalcMD5, handleStartUpload]

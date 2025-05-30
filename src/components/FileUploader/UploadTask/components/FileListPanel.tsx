@@ -78,20 +78,15 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
       : 2000; // 默认为2000ms
 
   const {
-    files,
     setFiles,
     md5Info,
     instantInfo,
     uploadingInfo,
-    loadingKey,
     uploadingAll,
     speedInfo,
     errorInfo,
-    handleCalcMD5,
-    handleStartUpload,
     handleStartAll,
     handleRetry,
-    handleRetryAllFailed,
     handleStartUploadWithAutoMD5,
   } = useFileUploadQueue({
     apiPrefix: DEFAULT_API_PREFIX,
@@ -99,21 +94,10 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
     concurrency: chunkConcurrency,
     keepAfterUpload: keepAfterUpload, // 使用上下文中的值
     removeDelayMs: removeDelayMs, // 使用上下文中的值
-    onRemoveAfterUpload: async (file, reason) => {
-      console.log(`[FileListPanel] 文件已移除: ${file.name}, 原因: ${reason}`);
-      // 从filesState中移除文件，确保UI立即更新
-      const key = (file as any).key;
-      console.log(
-        `[FileListPanel] 从filesState中移除文件: ${file.name}, key=${key}`
-      );
-      setFilesState((prev) => {
-        const newFiles = prev.filter((f) => f.key !== key);
-        console.log(
-          `[FileListPanel] filesState更新: 从 ${prev.length} 减少到 ${newFiles.length}`
-        );
-        return newFiles;
-      });
-      return true; // 允许移除
+    onRemoveAfterUpload: async () => {
+      // 不再立即从filesState中移除文件，只从IndexedDB中移除
+      // 返回false表示不要从UI中移除文件，让批量上传完成时统一处理
+      return false;
     },
   });
 
@@ -178,9 +162,6 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
       ) {
         // 如果这个文件还没有设置过定时器，则添加到Map中
         if (!filesToRemove.has(key)) {
-          console.log(
-            `[FileListPanel useEffect] 添加文件到清理队列: ${meta.name}, key=${key}`
-          );
           filesToRemove.set(key, meta);
         }
       }
@@ -190,31 +171,13 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
     const timers: ReturnType<typeof setTimeout>[] = [];
 
     filesToRemove.forEach((meta, key) => {
-      console.log(
-        `[FileListPanel useEffect] 设置清理定时器: ${meta.name}, key=${key}, 延时=${removeDelayMs}ms`
-      );
       const timer = setTimeout(async () => {
         try {
-          console.log(
-            `[FileListPanel useEffect] 定时器触发，准备删除: ${meta.name}, key=${key}`
-          );
+          // 只从IndexedDB中删除数据，不从UI中移除
           await removeFileMeta(key);
-          console.log(
-            `[FileListPanel useEffect] 从数据库中删除成功: ${meta.name}`
-          );
-          // 使用函数式更新，确保使用最新的状态
-          setFilesState((prevState) => {
-            const newFiles = prevState.filter((f) => f.key !== key);
-            console.log(
-              `[FileListPanel useEffect] filesState更新: 从 ${prevState.length} 减少到 ${newFiles.length}`
-            );
-            return newFiles;
-          });
+          // 注意：这里不再调用setFilesState来从UI中移除
         } catch (error) {
-          console.error(
-            `[FileListPanel useEffect] 删除文件失败: ${meta.name}`,
-            error
-          );
+          console.error("删除文件失败:", error);
         }
       }, removeDelayMs);
 

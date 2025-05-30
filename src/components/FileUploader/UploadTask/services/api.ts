@@ -51,10 +51,6 @@ export async function checkInstantUpload(
         chunk_md5s: chunkMD5s,
       };
   const prefix = options?.apiPrefix ?? "";
-  console.log(
-    `发送秒传请求: ${options?.url || `${prefix}/file/instant`}`,
-    reqBody
-  );
 
   try {
     const res = await fetch(options?.url || `${prefix}/file/instant`, {
@@ -68,8 +64,7 @@ export async function checkInstantUpload(
     const data = await res.json();
     if (data.code !== 200) throw new Error(data.message || "秒传接口异常");
     return data.data || { uploaded: false, chunkCheckResult: [] };
-  } catch (err) {
-    console.log("秒传请求失败，返回模拟数据", err);
+  } catch {
     // 关键修改: 始终返回未上传状态，确保文件会进行实际上传
     // 模拟响应
     await new Promise((resolve) => setTimeout(resolve, MOCK_DELAY));
@@ -98,11 +93,6 @@ export async function getFileStatus(
   options?: { apiPrefix?: string }
 ) {
   const prefix = options?.apiPrefix ?? "";
-  console.log(
-    `发送状态检查请求: ${prefix}/file/status?file_id=${encodeURIComponent(
-      fileId
-    )}&md5=${md5}`
-  );
 
   try {
     const res = await fetch(
@@ -111,8 +101,7 @@ export async function getFileStatus(
     const data = await res.json();
     if (data.code !== 200) throw new Error(data.message || "状态检测失败");
     return data.data?.chunks || [];
-  } catch (err) {
-    console.log("状态检查请求失败，返回空数组", err);
+  } catch {
     // 模拟响应
     await new Promise((resolve) => setTimeout(resolve, MOCK_DELAY));
     return [];
@@ -160,11 +149,6 @@ export async function uploadFileChunk(
   });
   const prefix = options?.apiPrefix ?? "";
   const uploadUrl = options?.url || `${prefix}/file/upload`;
-  console.log(`发送分片上传请求: ${uploadUrl}`, {
-    fileId,
-    index,
-    size: chunk.size,
-  });
 
   try {
     const res = await fetch(uploadUrl, {
@@ -175,8 +159,7 @@ export async function uploadFileChunk(
     const data = await res.json();
     if (data.code !== 200) throw new Error(data.message || "分片上传失败");
     return data;
-  } catch (err) {
-    console.log(`分片 ${index} 上传请求失败，模拟上传成功`, err);
+  } catch {
     // 模拟一个成功的响应
     await new Promise((resolve) => setTimeout(resolve, MOCK_DELAY));
     return {
@@ -220,7 +203,6 @@ export async function mergeFile(
     : { file_id: fileId, md5, name, size, total };
   const prefix = options?.apiPrefix ?? "";
   const mergeUrl = options?.url || `${prefix}/file/merge`;
-  console.log(`发送合并请求: ${mergeUrl}`, reqBody);
 
   try {
     const res = await fetch(mergeUrl, {
@@ -234,8 +216,7 @@ export async function mergeFile(
     const data = await res.json();
     if (data.code !== 200) throw new Error(data.message || "合并失败");
     return data;
-  } catch (err) {
-    console.log("合并请求失败，模拟合并成功", err);
+  } catch {
     // 模拟一个成功的响应
     await new Promise((resolve) => setTimeout(resolve, MOCK_DELAY * 2));
     return {
