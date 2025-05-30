@@ -1,4 +1,4 @@
-import { Button, Card, Space, Tabs } from "antd";
+import { Button, Card, Space } from "antd";
 import {
   ClearOutlined,
   PauseCircleOutlined,
@@ -30,7 +30,6 @@ const UploadTask: React.FC<UploadTaskProps> = ({
   maxSize = 1024, // 默认最大1GB
   maxCount,
 }) => {
-  const [activeTab, setActiveTab] = useState<string>("uploading");
   const [queuePaused, setQueuePaused] = useState<boolean>(false);
 
   // 暂停/恢复上传队列
@@ -51,20 +50,6 @@ const UploadTask: React.FC<UploadTaskProps> = ({
 
   // 获取队列状态
   const queueStats = getQueueStats();
-
-  // 定义 Tabs 的 items
-  const tabItems = [
-    {
-      key: "uploading",
-      label: "上传中",
-      children: <FileListPanel showCompleted={false} />,
-    },
-    {
-      key: "all",
-      label: "全部文件",
-      children: <FileListPanel showCompleted={true} />,
-    },
-  ];
 
   return (
     <Card
@@ -97,7 +82,7 @@ const UploadTask: React.FC<UploadTaskProps> = ({
         maxCount={maxCount}
       />
 
-      <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} />
+      <FileListPanel />
     </Card>
   );
 };

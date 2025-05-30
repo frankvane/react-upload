@@ -80,33 +80,16 @@ const getStatusTag = (status: UploadStatus): JSX.Element => {
   }
 };
 
-interface FileListPanelProps {
-  showCompleted?: boolean;
-}
-
-const FileListPanel: React.FC<FileListPanelProps> = ({
-  showCompleted = true,
-}) => {
+const FileListPanel: React.FC = () => {
   // 使用选择器函数分别获取状态和动作，避免不必要的重新渲染
   const uploadFiles = useUploadStore((state) => state.uploadFiles);
   const removeFile = useUploadStore((state) => state.removeFile);
   const clearCompleted = useUploadStore((state) => state.clearCompleted);
 
-  // 过滤已完成的文件（如果不显示已完成）
-  const filteredFiles = React.useMemo(() => {
-    return showCompleted
-      ? uploadFiles
-      : uploadFiles.filter(
-          (file) =>
-            file.status !== UploadStatus.DONE &&
-            file.status !== UploadStatus.INSTANT
-        );
-  }, [uploadFiles, showCompleted]);
-
   // 按照创建时间排序，最新的在前面
   const sortedFiles = React.useMemo(() => {
-    return [...filteredFiles].sort((a, b) => b.createdAt - a.createdAt);
-  }, [filteredFiles]);
+    return [...uploadFiles].sort((a, b) => b.createdAt - a.createdAt);
+  }, [uploadFiles]);
 
   const handleRetry = useCallback((fileId: string) => {
     retryUpload(fileId);
