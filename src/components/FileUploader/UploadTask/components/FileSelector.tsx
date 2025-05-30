@@ -51,11 +51,11 @@ const FileSelector: React.FC<FileSelectorProps> = ({
       // 使用 Promise.all 并行处理所有文件
       const processPromises = validFiles.map(async (file) => {
         try {
-          // 添加文件到 store，状态为 QUEUED_FOR_UPLOAD
-          const fileId = addFile(file);
+          // 先使用 Web Worker 处理文件并计算 MD5
+          const meta = await processFileWithWorker(file);
 
-          // 使用 Web Worker 处理文件并存储到 IndexedDB
-          await processFileWithWorker(file);
+          // 使用 MD5 作为文件 ID 添加到 store
+          const fileId = addFile(file, meta.key);
 
           // 返回文件 ID
           return fileId;

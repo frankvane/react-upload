@@ -21,7 +21,7 @@ export interface UploadFile {
 // 定义整个上传队列的状态结构
 interface UploadState {
   uploadFiles: UploadFile[]; // 待上传文件列表
-  addFile: (file: File) => string; // 添加文件到队列，返回文件ID
+  addFile: (file: File, md5?: string) => string; // 添加文件到队列，返回文件ID
   updateFileStatus: (
     id: string,
     status: UploadStatus,
@@ -41,9 +41,9 @@ interface UploadState {
 export const useUploadStore = create<UploadState>((set) => ({
   uploadFiles: [],
 
-  addFile: (file: File) => {
-    // 使用稳定的文件 ID 生成方式，确保相同文件每次都有相同的 ID
-    const fileId = generateStableFileId(file);
+  addFile: (file: File, md5?: string) => {
+    // 使用 MD5 作为文件 ID，如果没有提供则使用稳定的文件 ID 生成方式
+    const fileId = md5 || generateStableFileId(file);
 
     // 检查文件是否已经在队列中
     set((state) => {
@@ -87,6 +87,7 @@ export const useUploadStore = create<UploadState>((set) => ({
             file,
             status: UploadStatus.QUEUED_FOR_UPLOAD, // 选中文件后即为等待上传状态
             progress: 0,
+            hash: md5, // 如果提供了 MD5，则设置哈希值
             createdAt: Date.now(),
           },
         ],
@@ -205,6 +206,7 @@ export const useUploadStore = create<UploadState>((set) => ({
           lastModified: meta.lastModified,
         });
 
+        // 使用 meta.key 作为文件 ID，它是文件的 MD5 哈希值
         return {
           id: meta.key,
           file,

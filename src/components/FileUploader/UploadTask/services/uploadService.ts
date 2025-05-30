@@ -246,9 +246,21 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
     // 更新状态为计算中
     updateFileStatus(fileId, UploadStatus.CALCULATING);
 
-    // 计算文件哈希和分片哈希
-    const { fileHash, chunkHashes } = await calculateFileHash(uploadFile.file);
-    updateFileHash(fileId, fileHash);
+    // 如果已经有哈希值（通过 addFile 设置），则使用它
+    let fileHash = uploadFile.hash || "";
+    let chunkHashes: string[] = [];
+
+    // 如果没有哈希值，则计算文件哈希和分片哈希
+    if (!fileHash) {
+      const hashResult = await calculateFileHash(uploadFile.file);
+      fileHash = hashResult.fileHash;
+      chunkHashes = hashResult.chunkHashes;
+      updateFileHash(fileId, fileHash);
+    } else {
+      // 如果已有哈希值，仍需计算分片哈希
+      const hashResult = await calculateFileHash(uploadFile.file);
+      chunkHashes = hashResult.chunkHashes;
+    }
 
     // 准备分片上传
     const chunkSize = DEFAULT_CHUNK_SIZE;
@@ -259,7 +271,7 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
     const existingFile = await dbService.getFileMeta(fileHash);
     if (!existingFile) {
       // 文件不存在，才保存到 IndexedDB，便于断点续传
-      await saveFileToIndexedDB(uploadFile.file, fileId, chunkSize);
+      await saveFileToIndexedDB(uploadFile.file, fileHash, chunkSize);
     }
 
     // 检查文件是否可以秒传
