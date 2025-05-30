@@ -1,5 +1,6 @@
 import { UploadStatus } from "../types/upload";
 import { create } from "zustand";
+import { generateStableFileId } from "../utils/fileUtils";
 
 // 定义单个上传文件的状态结构
 export interface UploadFile {
@@ -38,21 +39,57 @@ export const useUploadStore = create<UploadState>((set) => ({
   uploadFiles: [],
 
   addFile: (file: File) => {
-    const fileId = `${file.name}-${Date.now()}-${Math.random()
-      .toString(36)
-      .substring(2, 9)}`;
-    set((state) => ({
-      uploadFiles: [
-        ...state.uploadFiles,
-        {
-          id: fileId,
-          file,
-          status: UploadStatus.QUEUED_FOR_UPLOAD, // 选中文件后即为等待上传状态
-          progress: 0,
-          createdAt: Date.now(),
-        },
-      ],
-    }));
+    // 使用稳定的文件 ID 生成方式，确保相同文件每次都有相同的 ID
+    const fileId = generateStableFileId(file);
+
+    // 检查文件是否已经在队列中
+    set((state) => {
+      // 如果文件已经在队列中，则不重复添加
+      const existingFile = state.uploadFiles.find(
+        (uploadFile) => uploadFile.id === fileId
+      );
+
+      if (existingFile) {
+        // 如果文件已经在队列中，并且状态是已完成或秒传，则不做任何操作
+        if (
+          existingFile.status === UploadStatus.DONE ||
+          existingFile.status === UploadStatus.INSTANT
+        ) {
+          return { uploadFiles: state.uploadFiles };
+        }
+
+        // 如果文件已经在队列中，但状态不是已完成或秒传，则重置其状态
+        return {
+          uploadFiles: state.uploadFiles.map((uploadFile) =>
+            uploadFile.id === fileId
+              ? {
+                  ...uploadFile,
+                  status: UploadStatus.QUEUED_FOR_UPLOAD,
+                  progress: 0,
+                  uploadedChunks: 0,
+                  errorMessage: undefined,
+                  createdAt: Date.now(),
+                }
+              : uploadFile
+          ),
+        };
+      }
+
+      // 如果文件不在队列中，则添加到队列
+      return {
+        uploadFiles: [
+          ...state.uploadFiles,
+          {
+            id: fileId,
+            file,
+            status: UploadStatus.QUEUED_FOR_UPLOAD, // 选中文件后即为等待上传状态
+            progress: 0,
+            createdAt: Date.now(),
+          },
+        ],
+      };
+    });
+
     return fileId;
   },
 
