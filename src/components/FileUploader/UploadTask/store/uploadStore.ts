@@ -14,6 +14,7 @@ export interface UploadFile {
   chunkSize?: number; // 分片大小
   chunkCount?: number; // 分片总数
   uploadedChunks?: number; // 已上传分片数
+  pausedChunks?: number[]; // 暂停时已上传的分片索引
   errorMessage?: string; // 错误信息
   createdAt: number; // 创建时间戳
 }
@@ -30,6 +31,7 @@ interface UploadState {
   updateFileHash: (id: string, hash: string) => void; // 更新文件哈希值
   updateFileChunks: (id: string, chunkSize: number, chunkCount: number) => void; // 更新文件分片信息
   incrementUploadedChunks: (id: string) => void; // 增加已上传分片数
+  updatePausedChunks: (id: string, chunks: number[]) => void; // 更新暂停时已上传的分片索引
   setErrorMessage: (id: string, message: string) => void; // 设置错误信息
   removeFile: (id: string) => void; // 从队列中移除文件
   clearCompleted: () => void; // 清除已完成的文件
@@ -70,6 +72,7 @@ export const useUploadStore = create<UploadState>((set) => ({
                   status: UploadStatus.QUEUED_FOR_UPLOAD,
                   progress: 0,
                   uploadedChunks: 0,
+                  pausedChunks: [],
                   errorMessage: undefined,
                   createdAt: Date.now(),
                 }
@@ -88,6 +91,7 @@ export const useUploadStore = create<UploadState>((set) => ({
             status: UploadStatus.QUEUED_FOR_UPLOAD, // 选中文件后即为等待上传状态
             progress: 0,
             hash: md5, // 如果提供了 MD5，则设置哈希值
+            pausedChunks: [],
             createdAt: Date.now(),
           },
         ],
@@ -148,6 +152,14 @@ export const useUploadStore = create<UploadState>((set) => ({
     });
   },
 
+  updatePausedChunks: (id, pausedChunks) => {
+    set((state) => ({
+      uploadFiles: state.uploadFiles.map((uploadFile) =>
+        uploadFile.id === id ? { ...uploadFile, pausedChunks } : uploadFile
+      ),
+    }));
+  },
+
   setErrorMessage: (id, errorMessage) => {
     set((state) => ({
       uploadFiles: state.uploadFiles.map((uploadFile) =>
@@ -183,6 +195,7 @@ export const useUploadStore = create<UploadState>((set) => ({
               status: UploadStatus.QUEUED_FOR_UPLOAD,
               progress: 0,
               uploadedChunks: 0,
+              pausedChunks: [],
               errorMessage: undefined,
             }
           : uploadFile
@@ -216,6 +229,7 @@ export const useUploadStore = create<UploadState>((set) => ({
           chunkSize: meta.chunkSize,
           chunkCount: Math.ceil(meta.size / meta.chunkSize),
           uploadedChunks: 0,
+          pausedChunks: [],
           createdAt: meta.addedAt,
         };
       });

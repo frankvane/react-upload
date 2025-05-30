@@ -10,6 +10,9 @@ import { useUploadStore } from "../store/uploadStore";
 // 创建一个并发队列，最大并发数为3
 const uploadQueue = new PQueue({ concurrency: 3 });
 
+// 存储每个文件的中断控制器
+const fileAbortControllers: Record<string, AbortController> = {};
+
 // 默认分片大小：2MB
 const DEFAULT_CHUNK_SIZE = 2 * 1024 * 1024;
 
@@ -223,7 +226,8 @@ export const uploadFileChunk = async (
   chunkIndex: number,
   chunkSize: number,
   chunkHash: string,
-  totalChunks: number
+  totalChunks: number,
+  abortSignal?: AbortSignal
 ): Promise<boolean> => {
   try {
     const start = chunkIndex * chunkSize;
@@ -239,11 +243,19 @@ export const uploadFileChunk = async (
         name: file.name,
         total: totalChunks,
       },
-      { apiPrefix: API_PREFIX }
+      {
+        apiPrefix: API_PREFIX,
+        signal: abortSignal,
+      }
     );
 
     return result.code === 200;
   } catch (error) {
+    // 如果是因为中断导致的错误，不需要抛出
+    if (error instanceof Error && error.name === "AbortError") {
+      console.log(`分片 ${chunkIndex} 上传已中断`);
+      return false;
+    }
     console.error(`上传分片 ${chunkIndex} 失败:`, error);
     throw error;
   }
@@ -289,10 +301,15 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
     updateFileChunks,
     incrementUploadedChunks,
     setErrorMessage,
+    updatePausedChunks,
   } = useUploadStore.getState();
 
   const uploadFile = uploadFiles.find((file) => file.id === fileId);
   if (!uploadFile) return;
+
+  // 创建一个新的中断控制器
+  const abortController = new AbortController();
+  fileAbortControllers[fileId] = abortController;
 
   try {
     // 更新状态为计算中，初始进度为0
@@ -364,12 +381,18 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
       { apiPrefix: API_PREFIX }
     );
 
+    // 检查是否有暂停时保存的分片信息
+    const pausedChunks = uploadFile.pausedChunks || [];
+    const allUploadedChunks = [
+      ...new Set([...uploadedChunks, ...pausedChunks]),
+    ];
+
     // 上传未完成的分片
     const uploadTasks = [];
     for (let i = 0; i < chunkCount; i++) {
       // 检查分片是否已上传
       const isUploaded =
-        uploadedChunks.includes(i) ||
+        allUploadedChunks.includes(i) ||
         instantCheckResult.chunkCheckResult.some(
           (chunk) => chunk.index === i && chunk.exist && chunk.match
         );
@@ -382,9 +405,13 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
             i,
             chunkSize,
             chunkHashes[i],
-            chunkCount
-          ).then(() => {
-            incrementUploadedChunks(fileId);
+            chunkCount,
+            abortController.signal
+          ).then((success) => {
+            if (success) {
+              incrementUploadedChunks(fileId);
+            }
+            return { index: i, success };
           })
         );
       } else {
@@ -394,7 +421,24 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
     }
 
     // 等待所有分片上传完成
-    await Promise.all(uploadTasks);
+    const results = await Promise.all(uploadTasks);
+
+    // 如果上传被中断，保存已上传的分片信息
+    if (abortController.signal.aborted) {
+      const successChunks = results
+        .filter((result) => result.success)
+        .map((result) => result.index);
+
+      // 合并已上传的分片和新上传成功的分片
+      const updatedPausedChunks = [
+        ...new Set([...pausedChunks, ...successChunks]),
+      ];
+      updatePausedChunks(fileId, updatedPausedChunks);
+
+      // 更新状态为暂停
+      updateFileStatus(fileId, UploadStatus.PAUSED);
+      return;
+    }
 
     // 请求服务器合并分片
     await mergeFileChunks(
@@ -410,7 +454,15 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
 
     // 上传成功后从 IndexedDB 中删除文件
     await dbService.removeFileMeta(fileHash);
+
+    // 清除中断控制器
+    delete fileAbortControllers[fileId];
   } catch (error) {
+    // 如果是因为中断导致的错误，不做特殊处理
+    if (error instanceof Error && error.name === "AbortError") {
+      return;
+    }
+
     // 处理错误
     console.error(`文件上传失败: ${uploadFile.file.name}`, error);
 
@@ -426,6 +478,9 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
     } else {
       updateFileStatus(fileId, UploadStatus.ERROR);
     }
+
+    // 清除中断控制器
+    delete fileAbortControllers[fileId];
   }
 };
 
@@ -441,7 +496,8 @@ export const addFileToQueue = (fileId: string): void => {
   if (
     file.status !== UploadStatus.QUEUED_FOR_UPLOAD &&
     file.status !== UploadStatus.ERROR &&
-    file.status !== UploadStatus.MERGE_ERROR
+    file.status !== UploadStatus.MERGE_ERROR &&
+    file.status !== UploadStatus.PAUSED
   ) {
     return;
   }
@@ -460,14 +516,78 @@ export const retryUpload = (fileId: string): void => {
   addFileToQueue(fileId);
 };
 
+// 暂停单个文件上传
+export const pauseFile = (fileId: string): void => {
+  const { uploadFiles, updateFileStatus } = useUploadStore.getState();
+  const file = uploadFiles.find((f) => f.id === fileId);
+
+  if (!file || file.status !== UploadStatus.UPLOADING) {
+    return;
+  }
+
+  // 中断该文件的上传
+  if (fileAbortControllers[fileId]) {
+    fileAbortControllers[fileId].abort();
+    delete fileAbortControllers[fileId];
+  }
+
+  // 更新文件状态为暂停
+  updateFileStatus(fileId, UploadStatus.PAUSED);
+};
+
+// 恢复单个文件上传
+export const resumeFile = (fileId: string): void => {
+  const { uploadFiles } = useUploadStore.getState();
+  const file = uploadFiles.find((f) => f.id === fileId);
+
+  console.log(`尝试恢复文件: ${fileId}, 当前状态:`, file?.status);
+
+  if (!file) {
+    console.error(`恢复上传失败: 找不到文件 ${fileId}`);
+    return;
+  }
+
+  if (file.status !== UploadStatus.PAUSED) {
+    console.error(`恢复上传失败: 文件状态不是暂停 (${file.status})`);
+    return;
+  }
+
+  console.log(`恢复上传文件: ${fileId}, 文件名: ${file.file.name}`);
+
+  // 重新添加到上传队列
+  addFileToQueue(fileId);
+};
+
 // 暂停队列
 export const pauseQueue = (): void => {
+  // 暂停队列
   uploadQueue.pause();
+
+  // 暂停所有正在上传的文件
+  const { uploadFiles } = useUploadStore.getState();
+  const uploadingFiles = uploadFiles.filter(
+    (file) => file.status === UploadStatus.UPLOADING
+  );
+
+  uploadingFiles.forEach((file) => {
+    pauseFile(file.id);
+  });
 };
 
 // 恢复队列
 export const resumeQueue = (): void => {
+  // 恢复队列处理
   uploadQueue.start();
+
+  // 恢复所有暂停的文件
+  const { uploadFiles } = useUploadStore.getState();
+  const pausedFiles = uploadFiles.filter(
+    (file) => file.status === UploadStatus.PAUSED
+  );
+
+  pausedFiles.forEach((file) => {
+    resumeFile(file.id);
+  });
 };
 
 // 清空队列

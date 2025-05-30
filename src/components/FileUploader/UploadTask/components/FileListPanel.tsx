@@ -5,12 +5,18 @@ import {
   DeleteOutlined,
   LoadingOutlined,
   PauseCircleOutlined,
+  PlayCircleOutlined,
   ReloadOutlined,
   SyncOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
 import React, { useCallback } from "react";
-import { addFileToQueue, retryUpload } from "../services/uploadService";
+import {
+  addFileToQueue,
+  pauseFile,
+  resumeFile,
+  retryUpload,
+} from "../services/uploadService";
 
 import type { UploadFile } from "../store/uploadStore";
 import { UploadStatus } from "../types/upload";
@@ -50,6 +56,12 @@ const getStatusTag = (status: UploadStatus): JSX.Element => {
       return (
         <Tag color="processing" icon={<LoadingOutlined />}>
           上传中
+        </Tag>
+      );
+    case UploadStatus.PAUSED:
+      return (
+        <Tag color="warning" icon={<PauseCircleOutlined />}>
+          已暂停
         </Tag>
       );
     case UploadStatus.DONE:
@@ -137,6 +149,14 @@ const FileListPanel: React.FC = () => {
     });
   }, [failedFiles]);
 
+  const handlePauseFile = useCallback((fileId: string) => {
+    pauseFile(fileId);
+  }, []);
+
+  const handleResumeFile = useCallback((fileId: string) => {
+    resumeFile(fileId);
+  }, []);
+
   const columns = React.useMemo(
     () => [
       {
@@ -216,6 +236,26 @@ const FileListPanel: React.FC = () => {
                 上传
               </Button>
             )}
+            {record.status === UploadStatus.UPLOADING && (
+              <Button
+                type="link"
+                icon={<PauseCircleOutlined />}
+                onClick={() => handlePauseFile(record.id)}
+                size="small"
+              >
+                暂停
+              </Button>
+            )}
+            {record.status === UploadStatus.PAUSED && (
+              <Button
+                type="link"
+                icon={<PlayCircleOutlined />}
+                onClick={() => handleResumeFile(record.id)}
+                size="small"
+              >
+                继续
+              </Button>
+            )}
             {(record.status === UploadStatus.ERROR ||
               record.status === UploadStatus.MERGE_ERROR) && (
               <Button
@@ -241,7 +281,13 @@ const FileListPanel: React.FC = () => {
         width: "20%",
       },
     ],
-    [handleRetry, handleRemove, handleUploadFile]
+    [
+      handleRetry,
+      handleRemove,
+      handleUploadFile,
+      handlePauseFile,
+      handleResumeFile,
+    ]
   );
 
   // 检查是否有已完成的文件

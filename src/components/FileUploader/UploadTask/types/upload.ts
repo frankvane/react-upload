@@ -6,6 +6,7 @@ export enum UploadStatus {
   QUEUED_FOR_UPLOAD = "queued-for-upload",
   CALCULATING = "calculating",
   UPLOADING = "uploading",
+  PAUSED = "paused",
   DONE = "done",
   INSTANT = "instant",
   ERROR = "error",

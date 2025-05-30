@@ -130,6 +130,7 @@ export async function uploadFileChunk(
     apiPrefix?: string;
     headers?: Record<string, string>;
     paramsTransform?: (params: any, type: string) => any;
+    signal?: AbortSignal;
   }
 ) {
   const formData = new FormData();
@@ -155,11 +156,17 @@ export async function uploadFileChunk(
       method: "POST",
       body: formData,
       headers: options?.headers || {},
+      signal: options?.signal,
     });
     const data = await res.json();
     if (data.code !== 200) throw new Error(data.message || "分片上传失败");
     return data;
-  } catch {
+  } catch (error) {
+    // 如果是中止错误，则向上抛出
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw error;
+    }
+
     // 模拟一个成功的响应
     await new Promise((resolve) => setTimeout(resolve, MOCK_DELAY));
     return {

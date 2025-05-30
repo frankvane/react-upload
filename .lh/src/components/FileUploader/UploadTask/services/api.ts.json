@@ -3,7 +3,7 @@
     "activeCommit": 0,
     "commits": [
         {
-            "activePatchIndex": 2,
+            "activePatchIndex": 3,
             "patches": [
                 {
                     "date": 1748440813781,
@@ -16,6 +16,10 @@
                 {
                     "date": 1748565901367,
                     "content": "Index: \n===================================================================\n--- \n+++ \n@@ -51,9 +51,9 @@\n         chunk_md5s: chunkMD5s,\r\n       };\r\n   const prefix = options?.apiPrefix ?? \"\";\r\n   console.log(`发送秒传请求: ${options?.url || `${prefix}/file/instant`}`, reqBody);\r\n-  \r\n+\r\n   try {\r\n     const res = await fetch(options?.url || `${prefix}/file/instant`, {\r\n       method: \"POST\",\r\n       headers: {\r\n@@ -92,9 +92,9 @@\n   options?: { apiPrefix?: string }\r\n ) {\r\n   const prefix = options?.apiPrefix ?? \"\";\r\n   console.log(`发送状态检查请求: ${prefix}/file/status?file_id=${encodeURIComponent(fileId)}&md5=${md5}`);\r\n-  \r\n+\r\n   try {\r\n     const res = await fetch(\r\n       `${prefix}/file/status?file_id=${encodeURIComponent(fileId)}&md5=${md5}`\r\n     );\r\n@@ -150,9 +150,9 @@\n   });\r\n   const prefix = options?.apiPrefix ?? \"\";\r\n   const uploadUrl = options?.url || `${prefix}/file/upload`;\r\n   console.log(`发送分片上传请求: ${uploadUrl}`, { fileId, index, size: chunk.size });\r\n-  \r\n+\r\n   try {\r\n     const res = await fetch(uploadUrl, {\r\n       method: \"POST\",\r\n       body: formData,\r\n@@ -206,9 +206,9 @@\n     : { file_id: fileId, md5, name, size, total };\r\n   const prefix = options?.apiPrefix ?? \"\";\r\n   const mergeUrl = options?.url || `${prefix}/file/merge`;\r\n   console.log(`发送合并请求: ${mergeUrl}`, reqBody);\r\n-  \r\n+\r\n   try {\r\n     const res = await fetch(mergeUrl, {\r\n       method: \"POST\",\r\n       headers: {\r\n"
+                },
+                {
+                    "date": 1748618741092,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -129,8 +129,9 @@\n     url?: string;\n     apiPrefix?: string;\n     headers?: Record<string, string>;\n     paramsTransform?: (params: any, type: string) => any;\n+    signal?: AbortSignal;\n   }\n ) {\n   const formData = new FormData();\n   let reqParams = {\n@@ -154,13 +155,19 @@\n     const res = await fetch(uploadUrl, {\n       method: \"POST\",\n       body: formData,\n       headers: options?.headers || {},\n+      signal: options?.signal,\n     });\n     const data = await res.json();\n     if (data.code !== 200) throw new Error(data.message || \"分片上传失败\");\n     return data;\n-  } catch {\n+  } catch (error) {\n+    // 如果是中止错误，则向上抛出\n+    if (error instanceof DOMException && error.name === 'AbortError') {\n+      throw error;\n+    }\n+    \n     // 模拟一个成功的响应\n     await new Promise((resolve) => setTimeout(resolve, MOCK_DELAY));\n     return {\n       code: 200,\n"
                 }
             ],
             "date": 1748440813781,
