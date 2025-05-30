@@ -101,6 +101,14 @@ export function useFileUploadQueue({
   const [md5Info, setMd5Info] = useState<
     Record<string, { fileMD5: string; chunkMD5s: string[] }>
   >({});
+
+  /**
+   * 使用ref跟踪最新的MD5信息，避免状态更新延迟问题
+   */
+  const md5InfoRef = useRef<
+    Record<string, { fileMD5: string; chunkMD5s: string[] }>
+  >({});
+
   /**
    * 秒传/分片存在性信息
    */
@@ -283,8 +291,24 @@ export function useFileUploadQueue({
         // 执行带进度的MD5计算
         const result = await calcMD5WithProgress();
 
-        // 更新MD5信息
-        setMd5Info((prev) => ({ ...prev, [getFileKey(file)]: result }));
+        // 输出调试信息，确认MD5计算结果
+        console.log(`MD5计算成功 - ${file.name}:`, result.fileMD5);
+
+        // 更新MD5信息 - 使用函数式更新确保状态正确设置
+        setMd5Info((prev) => {
+          const newState = { ...prev };
+          newState[getFileKey(file)] = result;
+          return newState;
+        });
+
+        // 同时更新ref，确保可以立即访问最新值
+        md5InfoRef.current = {
+          ...md5InfoRef.current,
+          [getFileKey(file)]: result,
+        };
+
+        // 等待状态更新完成
+        await new Promise((resolve) => setTimeout(resolve, 50));
 
         // 秒传验证
         const fileId = `${result.fileMD5}-${file.name}-${file.size}`;
@@ -315,6 +339,21 @@ export function useFileUploadQueue({
 
         if (onCheckSuccess) onCheckSuccess(file, instantRes);
 
+        // 再次确认MD5信息已正确设置
+        setMd5Info((prev) => {
+          // 如果MD5信息不存在，重新设置一次
+          if (!prev[getFileKey(file)]) {
+            console.log(`修复丢失的MD5信息 - ${file.name}`);
+            return { ...prev, [getFileKey(file)]: result };
+          }
+          return prev;
+        });
+
+        // 同时更新ref
+        if (!md5InfoRef.current[getFileKey(file)]) {
+          md5InfoRef.current[getFileKey(file)] = result;
+        }
+
         setInstantInfo((prev) => ({
           ...prev,
           [getFileKey(file)]: instantRes,
@@ -344,6 +383,9 @@ export function useFileUploadQueue({
             status: instantRes.uploaded ? "done" : "ready",
           },
         }));
+
+        // 返回计算结果，便于调用方直接使用
+        return result;
       } catch (err) {
         console.error("MD5或秒传接口异常", err);
         setErrorInfo((prev) => ({
@@ -354,6 +396,7 @@ export function useFileUploadQueue({
           ...prev,
           [getFileKey(file)]: { progress: 0, status: "error" },
         }));
+        throw err; // 重新抛出错误，让调用方处理
       } finally {
         setLoadingKey(null);
       }
@@ -374,29 +417,33 @@ export function useFileUploadQueue({
 
   // 找到所有未计算MD5的文件，依次自动计算
   useEffect(() => {
-    // 添加延迟，避免页面初始化时立即计算MD5导致的性能问题
-    const timer = setTimeout(() => {
-      // 限制初始化时的计算，只处理第一个文件
-      const unMd5Files = files.filter((f) => !md5Info[getFileKey(f)]);
-      if (unMd5Files.length > 0 && !loadingKey) {
-        (async () => {
-          // 每次只处理一个文件，避免同时启动多个worker
-          await handleCalcMD5(unMd5Files[0]);
-        })();
-      }
-    }, 1000); // 延迟1秒开始计算MD5，给页面渲染留出足够时间
-
-    return () => clearTimeout(timer);
-  }, [files, md5Info, loadingKey, handleCalcMD5]);
+    // 完全移除自动计算MD5的逻辑，改为在点击开始上传时计算
+    return () => {}; // 保留空的清理函数
+  }, []);
 
   // 分片上传主流程
   const handleStartUpload = useCallback(
     async (file: File, resumeInfo?: any) => {
       const key = getFileKey(file);
       setErrorInfo((prev) => ({ ...prev, [key]: "" }));
-      const md5 = md5Info[key]?.fileMD5 || resumeInfo?.md5;
 
+      // 优先使用ref中的MD5，因为它总是最新的
+      const md5 =
+        md5InfoRef.current[key]?.fileMD5 ||
+        md5Info[key]?.fileMD5 ||
+        resumeInfo?.md5;
+
+      // 如果没有MD5，无法继续上传
       if (!md5) {
+        console.error("缺少MD5信息，无法上传文件");
+        setErrorInfo((prev) => ({
+          ...prev,
+          [key]: "缺少MD5信息，请尝试重新计算",
+        }));
+        setUploadingInfo((prev) => ({
+          ...prev,
+          [key]: { progress: 0, status: "error" },
+        }));
         return;
       }
 
@@ -458,7 +505,8 @@ export function useFileUploadQueue({
                   const uploadResult = await uploadFileChunk(
                     {
                       fileId,
-                      chunk_md5: md5Info[key].chunkMD5s[chunk.index],
+                      // 如果没有MD5信息，传null或空字符串
+                      chunk_md5: md5Info[key]?.chunkMD5s?.[chunk.index] || "",
                       index: chunk.index,
                       chunk: chunk.chunk,
                       name: file.name,
@@ -472,7 +520,7 @@ export function useFileUploadQueue({
                     }
                   );
                   // 使用服务器返回的MD5值更新本地状态
-                  if (uploadResult.data?.chunk_md5) {
+                  if (uploadResult.data?.chunk_md5 && md5Info[key]?.chunkMD5s) {
                     md5Info[key].chunkMD5s[chunk.index] =
                       uploadResult.data.chunk_md5;
                   }
@@ -653,52 +701,156 @@ export function useFileUploadQueue({
   // 批量上传自动补齐MD5
   const handleStartAll = useCallback(async () => {
     setUploadingAll(true);
-    // 先为所有未计算MD5的文件自动计算MD5
-    for (const file of files) {
-      const key = getFileKey(file);
-      if (!md5Info[key]) {
-        await handleCalcMD5(file);
-        // 每次计算完一个文件后暂停一下，避免阻塞UI
-        await new Promise((resolve) => setTimeout(resolve, 100));
+
+    try {
+      // 创建两个队列：等待MD5计算的文件队列 和 活跃处理中的文件集合
+      const pendingQueue = files.filter((file) => {
+        const key = getFileKey(file);
+        const instant = instantInfo[key];
+        const uploading = uploadingInfo[key];
+        // 只处理未秒传且未上传完成的文件
+        return (
+          !instant?.uploaded && (!uploading || uploading.status !== "done")
+        );
+      });
+
+      // 如果没有待处理文件，直接结束
+      if (pendingQueue.length === 0) {
+        setUploadingAll(false);
+        return;
       }
-    }
-    // 过滤出未秒传且未上传完成的文件
-    const needUploadFiles = files.filter((file) => {
-      const key = getFileKey(file);
-      const instant = instantInfo[key];
-      const uploading = uploadingInfo[key];
-      return (
-        md5Info[key] &&
-        !instant?.uploaded &&
-        (!uploading || uploading.status !== "done")
-      );
-    });
-    // 文件并发池调度
-    let idx = 0;
-    let activeCount = 0;
-    let finishedCount = 0;
-    const total = needUploadFiles.length;
-    return await new Promise<void>((resolve) => {
-      const tryStartNext = () => {
-        while (activeCount < fileConcurrency && idx < total) {
-          const file = needUploadFiles[idx++];
-          activeCount++;
-          handleStartUpload(file)
-            .catch(() => {})
-            .finally(() => {
-              activeCount--;
-              finishedCount++;
-              if (finishedCount === total) {
-                setUploadingAll(false);
-                resolve();
-              } else {
-                tryStartNext();
+
+      console.log(`待处理文件总数: ${pendingQueue.length}`);
+
+      // 活跃处理中的文件数量
+      let activeCount = 0;
+      // 已完成的文件数量
+      let completedCount = 0;
+
+      // 处理单个完整文件流程（MD5计算+上传）
+      const processCompleteFile = async (file: File): Promise<void> => {
+        const key = getFileKey(file);
+        console.log(`开始完整处理文件: ${file.name}, key=${key}`);
+
+        try {
+          // 步骤1: 计算MD5，最多重试2次
+          let md5Result = md5InfoRef.current[key] || md5Info[key];
+
+          if (!md5Result?.fileMD5) {
+            console.log(`开始计算MD5: ${file.name}`);
+
+            // 添加重试机制
+            let retryCount = 0;
+            let md5Success = false;
+
+            while (retryCount < 2 && !md5Success) {
+              if (retryCount > 0) {
+                console.log(`MD5计算重试 #${retryCount}: ${file.name}`);
+                // 重试前等待一小段时间
+                await new Promise((r) => setTimeout(r, 500));
               }
-            });
+
+              try {
+                // 直接获取计算结果，不依赖状态更新
+                md5Result = await handleCalcMD5(file);
+
+                // 检查MD5是否计算成功
+                console.log(
+                  `检查MD5计算结果 - ${file.name}:`,
+                  md5Result?.fileMD5 || "未找到"
+                );
+
+                if (md5Result?.fileMD5) {
+                  md5Success = true;
+                  console.log(
+                    `MD5计算完成: ${file.name}, MD5=${md5Result.fileMD5}`
+                  );
+                } else {
+                  throw new Error("MD5计算结果为空");
+                }
+              } catch (error) {
+                console.error(`MD5计算失败 (尝试 ${retryCount + 1}/2):`, error);
+                retryCount++;
+                // 最后一次重试失败，设置错误状态
+                if (retryCount >= 2) {
+                  setErrorInfo((prev) => ({
+                    ...prev,
+                    [key]: "MD5计算失败，请尝试重新上传",
+                  }));
+                  setUploadingInfo((prev) => ({
+                    ...prev,
+                    [key]: { progress: 0, status: "error" },
+                  }));
+                }
+              }
+            }
+          } else {
+            console.log(
+              `文件已有MD5，跳过计算: ${file.name}, MD5=${md5Result.fileMD5}`
+            );
+          }
+
+          // 如果已经秒传，就不执行上传
+          if (instantInfo[key]?.uploaded) {
+            console.log(`文件已秒传: ${file.name}`);
+          } else if (md5Result?.fileMD5) {
+            // 只有在MD5计算成功的情况下才开始上传
+            console.log(`开始上传文件: ${file.name}, MD5=${md5Result.fileMD5}`);
+            await handleStartUpload(file);
+            console.log(`文件上传完成: ${file.name}`);
+          } else {
+            console.log(`无法上传: ${file.name}，MD5计算失败`);
+          }
+        } catch (error) {
+          console.error(`处理文件失败: ${file.name}`, error);
+        } finally {
+          // 无论成功失败，都将活跃计数减一，并尝试处理队列中的下一个文件
+          activeCount--;
+          completedCount++;
+
+          // 步骤3: 从队列中取出下一个文件进行处理
+          if (pendingQueue.length > 0) {
+            startNextFile();
+          } else if (completedCount === files.length) {
+            // 所有文件都处理完成
+            console.log("所有文件处理完成");
+            setUploadingAll(false);
+          }
         }
       };
-      tryStartNext();
-    });
+
+      // 启动下一个文件的处理
+      const startNextFile = () => {
+        if (pendingQueue.length === 0 || activeCount >= fileConcurrency) {
+          return;
+        }
+
+        const nextFile = pendingQueue.shift()!;
+        activeCount++;
+
+        console.log(
+          `开始处理文件: ${nextFile.name} (${activeCount}/${fileConcurrency})`
+        );
+
+        // 使用setTimeout避免调用栈过深
+        setTimeout(() => {
+          processCompleteFile(nextFile).catch((err) => {
+            console.error("文件处理出错:", err);
+          });
+        }, 0);
+      };
+
+      // 初始启动并发数量的文件处理
+      const initialBatchSize = Math.min(fileConcurrency, pendingQueue.length);
+      console.log(`初始批次启动: ${initialBatchSize}个文件`);
+
+      for (let i = 0; i < initialBatchSize; i++) {
+        startNextFile();
+      }
+    } catch (error) {
+      console.error("批量上传初始化失败:", error);
+      setUploadingAll(false);
+    }
   }, [
     files,
     md5Info,
@@ -713,12 +865,78 @@ export function useFileUploadQueue({
   const handleStartUploadWithAutoMD5 = useCallback(
     async (file: File) => {
       const key = getFileKey(file);
-      if (!md5Info[key]) {
-        await handleCalcMD5(file);
+      console.log(`单文件上传开始处理: ${file.name}, key=${key}`);
+
+      // 优先使用ref中的MD5信息
+      let md5Result = md5InfoRef.current[key] || md5Info[key];
+
+      // 如果没有MD5，先尝试计算（最多重试2次）
+      if (!md5Result?.fileMD5) {
+        let retryCount = 0;
+        let md5Success = false;
+
+        while (retryCount < 2 && !md5Success) {
+          if (retryCount > 0) {
+            console.log(`MD5计算重试 #${retryCount}: ${file.name}`);
+          }
+
+          try {
+            // 直接获取计算结果，不依赖状态更新
+            md5Result = await handleCalcMD5(file);
+
+            // 检查MD5是否计算成功
+            console.log(
+              `检查单文件MD5计算结果 - ${file.name}:`,
+              md5Result?.fileMD5 || "未找到"
+            );
+
+            if (md5Result?.fileMD5) {
+              md5Success = true;
+              console.log(
+                `单文件MD5计算成功: ${file.name}, MD5=${md5Result.fileMD5}`
+              );
+            } else {
+              throw new Error("MD5计算结果为空");
+            }
+          } catch (error) {
+            console.error(
+              `单文件MD5计算失败 (尝试 ${retryCount + 1}/2):`,
+              error
+            );
+            retryCount++;
+
+            if (retryCount >= 2) {
+              // 最后一次重试也失败了，设置错误状态
+              setErrorInfo((prev) => ({
+                ...prev,
+                [key]: "MD5计算失败，请尝试重新上传",
+              }));
+              setUploadingInfo((prev) => ({
+                ...prev,
+                [key]: { progress: 0, status: "error" },
+              }));
+              return; // 中止上传流程
+            }
+
+            // 重试前短暂等待
+            await new Promise((r) => setTimeout(r, 500));
+          }
+        }
+      } else {
+        console.log(
+          `单文件已有MD5，跳过计算: ${file.name}, MD5=${md5Result.fileMD5}`
+        );
       }
-      await handleStartUpload(file);
+
+      // 只有在MD5计算成功的情况下才开始上传
+      if (md5Result?.fileMD5) {
+        console.log(`开始单文件上传: ${file.name}, MD5=${md5Result.fileMD5}`);
+        await handleStartUpload(file);
+      } else {
+        console.log(`无法上传单文件: ${file.name}，MD5计算失败`);
+      }
     },
-    [md5Info, handleCalcMD5, handleStartUpload]
+    [md5Info, instantInfo, handleCalcMD5, handleStartUpload]
   );
 
   return {
