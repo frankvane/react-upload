@@ -7,12 +7,13 @@ import {
   PauseCircleOutlined,
   ReloadOutlined,
   SyncOutlined,
+  UploadOutlined,
 } from "@ant-design/icons";
 import React, { useCallback } from "react";
+import { addFileToQueue, retryUpload } from "../services/uploadService";
 
 import type { UploadFile } from "../store/uploadStore";
 import { UploadStatus } from "../types/upload";
-import { retryUpload } from "../services/uploadService";
 import { useUploadStore } from "../store/uploadStore";
 
 // 格式化文件大小
@@ -102,6 +103,10 @@ const FileListPanel: React.FC = () => {
     [removeFile]
   );
 
+  const handleUploadFile = useCallback((fileId: string) => {
+    addFileToQueue(fileId);
+  }, []);
+
   const handleClearCompleted = useCallback(() => {
     clearCompleted();
   }, [clearCompleted]);
@@ -162,6 +167,16 @@ const FileListPanel: React.FC = () => {
         key: "action",
         render: (_: unknown, record: UploadFile) => (
           <Space size="middle">
+            {record.status === UploadStatus.QUEUED_FOR_UPLOAD && (
+              <Button
+                type="link"
+                icon={<UploadOutlined />}
+                onClick={() => handleUploadFile(record.id)}
+                size="small"
+              >
+                上传
+              </Button>
+            )}
             {(record.status === UploadStatus.ERROR ||
               record.status === UploadStatus.MERGE_ERROR) && (
               <Button
@@ -187,7 +202,7 @@ const FileListPanel: React.FC = () => {
         width: "20%",
       },
     ],
-    [handleRetry, handleRemove]
+    [handleRetry, handleRemove, handleUploadFile]
   );
 
   // 检查是否有已完成的文件
