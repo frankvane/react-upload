@@ -1,57 +1,104 @@
+import { Button, Card, Space, Tabs } from "antd";
+import {
+  ClearOutlined,
+  PauseCircleOutlined,
+  PlayCircleOutlined,
+} from "@ant-design/icons";
 import React, { useState } from "react";
+import {
+  clearQueue,
+  getQueueStats,
+  pauseQueue,
+  resumeQueue,
+} from "./services/uploadService";
 
 import FileListPanel from "./components/FileListPanel";
 import FileSelector from "./components/FileSelector";
-import { UploadConfigContext } from "./context";
-import { useNetworkType } from "./hooks/useNetworkType";
 
-const UploadTask: React.FC = () => {
-  const [progress, setProgress] = useState<number>(100);
-  const [costSeconds, setCostSeconds] = useState<number>(0);
+interface UploadTaskProps {
+  title?: string;
+  accept?: string;
+  multiple?: boolean;
+  maxSize?: number;
+  maxCount?: number;
+}
 
-  const { networkType, fileConcurrency, chunkConcurrency, chunkSize } =
-    useNetworkType();
-  const networkReady =
-    !!networkType &&
-    fileConcurrency > 0 &&
-    chunkConcurrency > 0 &&
-    chunkSize > 0;
+const UploadTask: React.FC<UploadTaskProps> = ({
+  title = "文件上传",
+  accept = "*",
+  multiple = true,
+  maxSize = 1024, // 默认最大1GB
+  maxCount,
+}) => {
+  const [activeTab, setActiveTab] = useState<string>("uploading");
+  const [queuePaused, setQueuePaused] = useState<boolean>(false);
 
-  const handleProgress = (
-    progress: number,
-    current: number,
-    total: number,
-    cost?: number
-  ) => {
-    setProgress(progress);
-    if (typeof cost === "number") setCostSeconds(cost);
+  // 暂停/恢复上传队列
+  const toggleQueuePause = () => {
+    if (queuePaused) {
+      resumeQueue();
+      setQueuePaused(false);
+    } else {
+      pauseQueue();
+      setQueuePaused(true);
+    }
   };
 
-  if (!networkReady) {
-    return (
-      <div style={{ padding: 32, textAlign: "center" }}>
-        正在检测网络状态...
-      </div>
-    );
-  }
+  // 清空上传队列
+  const handleClearQueue = () => {
+    clearQueue();
+  };
+
+  // 获取队列状态
+  const queueStats = getQueueStats();
+
+  // 定义 Tabs 的 items
+  const tabItems = [
+    {
+      key: "uploading",
+      label: "上传中",
+      children: <FileListPanel showCompleted={false} />,
+    },
+    {
+      key: "all",
+      label: "全部文件",
+      children: <FileListPanel showCompleted={true} />,
+    },
+  ];
 
   return (
-    <UploadConfigContext.Provider
-      value={{
-        networkType,
-        fileConcurrency,
-        chunkConcurrency,
-        chunkSize,
-        keepAfterUpload: false,
-        removeDelayMs: 0,
-      }}
+    <Card
+      title={title}
+      extra={
+        <Space>
+          <Button
+            icon={
+              queuePaused ? <PlayCircleOutlined /> : <PauseCircleOutlined />
+            }
+            onClick={toggleQueuePause}
+            type={queuePaused ? "primary" : "default"}
+          >
+            {queuePaused ? "恢复上传" : "暂停上传"}
+          </Button>
+          <Button
+            icon={<ClearOutlined />}
+            onClick={handleClearQueue}
+            disabled={queueStats.size === 0}
+          >
+            清空队列
+          </Button>
+        </Space>
+      }
     >
-      <h2>文件批量上传任务</h2>
-      <FileSelector onProgress={handleProgress} />
-      <div style={{ marginTop: 32 }}>
-        <FileListPanel progress={progress} costSeconds={costSeconds} />
-      </div>
-    </UploadConfigContext.Provider>
+      <FileSelector
+        accept={accept}
+        multiple={multiple}
+        maxSize={maxSize}
+        maxCount={maxCount}
+      />
+
+      <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} />
+    </Card>
   );
 };
 

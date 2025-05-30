@@ -1,15 +1,17 @@
 import UploadTask from "./components/FileUploader/UploadTask";
-import { message } from "antd";
 
-message.config({
-  top: 100,
-  duration: 2,
-  maxCount: 1,
-  rtl: false,
-  prefixCls: "my-message",
-});
+function App() {
+  return (
+    <div>
+      <h1>文件上传示例</h1>
+      <UploadTask
+        title="文件上传"
+        accept="*"
+        multiple={true}
+        maxSize={1024} // 最大1GB
+      />
+    </div>
+  );
+}
 
-const App = () => {
-  return <UploadTask />;
-};
 export default App;
