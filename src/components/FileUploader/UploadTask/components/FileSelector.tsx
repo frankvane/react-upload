@@ -3,7 +3,6 @@ import React, { useState } from "react";
 
 import { UploadOutlined } from "@ant-design/icons";
 import type { UploadProps } from "antd";
-import { addFileToQueue } from "../services/uploadService";
 import { processFileWithWorker } from "../utils/fileUtils";
 import { useUploadStore } from "../store/uploadStore";
 
@@ -75,14 +74,12 @@ const FileSelector: React.FC<FileSelectorProps> = ({
       // 过滤掉处理失败的文件
       const successFileIds = fileIds.filter((id) => id !== null) as string[];
 
-      // 将成功处理的文件添加到上传队列
-      successFileIds.forEach((fileId) => {
-        addFileToQueue(fileId);
-      });
+      // 不再自动添加到上传队列，保持在 QUEUED_FOR_UPLOAD 状态
+      // 用户需要点击"上传文件"按钮才会开始上传
 
       message.destroy();
       if (successFileIds.length > 0) {
-        message.success(`已添加 ${successFileIds.length} 个文件到上传队列`);
+        message.success(`已添加 ${successFileIds.length} 个文件到待上传列表`);
       }
     } catch (error) {
       console.error("处理文件时发生错误:", error);

@@ -14,6 +14,7 @@ import {
 
 import FileListPanel from "./components/FileListPanel";
 import FileSelector from "./components/FileSelector";
+import UploadButton from "./components/UploadButton";
 
 interface UploadTaskProps {
   title?: string;
@@ -81,6 +82,12 @@ const UploadTask: React.FC<UploadTaskProps> = ({
         maxSize={maxSize}
         maxCount={maxCount}
       />
+
+      <div
+        style={{ display: "flex", justifyContent: "center", margin: "16px 0" }}
+      >
+        <UploadButton />
+      </div>
 
       <FileListPanel />
     </Card>
