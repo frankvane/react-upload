@@ -817,7 +817,7 @@ export function useFileUploadQueue({
           } else if (activeCount === 0) {
             // 所有文件都处理完成，包括活跃中的文件
 
-            // 批量上传全部完成后，清理所有已上传/已秒传的文件
+            // 批量上传全部完成后，才清理所有已上传/已秒传的文件
             if (!keepAfterUpload) {
               // 找出所有已上传或已秒传的文件
               const filesToRemove = files.filter((file) => {
@@ -830,15 +830,18 @@ export function useFileUploadQueue({
 
               // 从UI列表中移除这些文件
               if (filesToRemove.length > 0) {
-                setFiles((prev) =>
-                  prev.filter((file) => {
-                    const key = getFileKey(file);
-                    return !(
-                      uploadingInfo[key]?.status === "done" ||
-                      instantInfo[key]?.uploaded
-                    );
-                  })
-                );
+                // 使用延迟，确保用户可以看到上传完成状态
+                setTimeout(() => {
+                  setFiles((prev) =>
+                    prev.filter((file) => {
+                      const key = getFileKey(file);
+                      return !(
+                        uploadingInfo[key]?.status === "done" ||
+                        instantInfo[key]?.uploaded
+                      );
+                    })
+                  );
+                }, removeDelayMs);
               }
             }
 

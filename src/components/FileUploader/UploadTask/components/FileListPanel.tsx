@@ -128,8 +128,11 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
 
   // 进度变化时刷新
   useEffect(() => {
-    if (progress === 100) fetchFiles();
-  }, [progress]);
+    // 只在上传全部完成时刷新列表
+    if (progress === 100 && !uploadingAll) {
+      fetchFiles();
+    }
+  }, [progress, uploadingAll]);
 
   useEffect(() => {
     const calcHeight = () => {
@@ -192,10 +195,11 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
 
   // 优化：本地先删，UI立刻响应
   const handleRemove = async (key: string) => {
+    // 先从UI中移除
     setFilesState((prev) => prev.filter((item) => item.key !== key));
+    // 然后从IndexedDB中删除
     await removeFileMeta(key);
     message.success("已删除");
-    // 不再fetchFiles
   };
 
   const handleClear = async () => {
@@ -207,9 +211,11 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
   // 批量删除
   const handleBatchDelete = async () => {
     if (selectedRowKeys.length === 0) return;
+    // 先从UI中移除
     setFilesState((prev) =>
       prev.filter((item) => !selectedRowKeys.includes(item.key))
     );
+    // 然后从IndexedDB中删除
     await Promise.all(
       selectedRowKeys.map((key) => removeFileMeta(key as string))
     );
