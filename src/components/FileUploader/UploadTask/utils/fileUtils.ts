@@ -38,7 +38,7 @@ export const processFileWithWorker = (file: File): Promise<UploadFileMeta> => {
           };
 
           try {
-            // 保存到 IndexedDB
+            // 保存到 IndexedDB，使用 MD5 作为 key
             await dbService.saveFileMeta(meta);
             resolve(meta);
           } catch (saveError) {

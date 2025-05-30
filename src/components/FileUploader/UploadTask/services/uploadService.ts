@@ -80,13 +80,16 @@ export const saveFileToIndexedDB = async (
   chunkSize: number
 ): Promise<boolean> => {
   try {
+    // 先计算文件的 MD5 哈希
+    const { fileHash } = await calculateFileHash(file);
+
     const reader = new FileReader();
     return new Promise((resolve, reject) => {
       reader.onload = async (event) => {
         if (event.target?.result) {
           const buffer = event.target.result as ArrayBuffer;
           const meta: UploadFileMeta = {
-            key: fileId,
+            key: fileHash, // 使用 MD5 哈希作为 key，而不是 fileId
             name: file.name,
             buffer,
             size: file.size,
@@ -252,8 +255,12 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
     const chunkCount = Math.ceil(uploadFile.file.size / chunkSize);
     updateFileChunks(fileId, chunkSize, chunkCount);
 
-    // 保存文件到 IndexedDB，便于断点续传
-    await saveFileToIndexedDB(uploadFile.file, fileId, chunkSize);
+    // 检查文件是否已存在于 IndexedDB 中
+    const existingFile = await dbService.getFileMeta(fileHash);
+    if (!existingFile) {
+      // 文件不存在，才保存到 IndexedDB，便于断点续传
+      await saveFileToIndexedDB(uploadFile.file, fileId, chunkSize);
+    }
 
     // 检查文件是否可以秒传
     const instantCheckResult = await checkInstantUpload(
