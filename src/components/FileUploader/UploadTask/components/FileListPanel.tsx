@@ -101,6 +101,18 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
     removeDelayMs: removeDelayMs, // 使用上下文中的值
     onRemoveAfterUpload: async (file, reason) => {
       console.log(`[FileListPanel] 文件已移除: ${file.name}, 原因: ${reason}`);
+      // 从filesState中移除文件，确保UI立即更新
+      const key = (file as any).key;
+      console.log(
+        `[FileListPanel] 从filesState中移除文件: ${file.name}, key=${key}`
+      );
+      setFilesState((prev) => {
+        const newFiles = prev.filter((f) => f.key !== key);
+        console.log(
+          `[FileListPanel] filesState更新: 从 ${prev.length} 减少到 ${newFiles.length}`
+        );
+        return newFiles;
+      });
       return true; // 允许移除
     },
   });
@@ -166,6 +178,9 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
       ) {
         // 如果这个文件还没有设置过定时器，则添加到Map中
         if (!filesToRemove.has(key)) {
+          console.log(
+            `[FileListPanel useEffect] 添加文件到清理队列: ${meta.name}, key=${key}`
+          );
           filesToRemove.set(key, meta);
         }
       }
@@ -175,15 +190,33 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
     const timers: ReturnType<typeof setTimeout>[] = [];
 
     filesToRemove.forEach((meta, key) => {
+      console.log(
+        `[FileListPanel useEffect] 设置清理定时器: ${meta.name}, key=${key}, 延时=${removeDelayMs}ms`
+      );
       const timer = setTimeout(async () => {
         try {
+          console.log(
+            `[FileListPanel useEffect] 定时器触发，准备删除: ${meta.name}, key=${key}`
+          );
           await removeFileMeta(key);
+          console.log(
+            `[FileListPanel useEffect] 从数据库中删除成功: ${meta.name}`
+          );
           // 使用函数式更新，确保使用最新的状态
-          setFilesState((prevState) => prevState.filter((f) => f.key !== key));
+          setFilesState((prevState) => {
+            const newFiles = prevState.filter((f) => f.key !== key);
+            console.log(
+              `[FileListPanel useEffect] filesState更新: 从 ${prevState.length} 减少到 ${newFiles.length}`
+            );
+            return newFiles;
+          });
         } catch (error) {
-          console.error("Failed to remove file:", error);
+          console.error(
+            `[FileListPanel useEffect] 删除文件失败: ${meta.name}`,
+            error
+          );
         }
-      }, 2000);
+      }, removeDelayMs);
 
       timers.push(timer);
     });
@@ -192,7 +225,7 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
     return () => {
       timers.forEach((timer) => clearTimeout(timer));
     };
-  }, [uploadingInfo, instantInfo]); // 只依赖上传状态和秒传状态，移除filesState依赖
+  }, [uploadingInfo, instantInfo, removeDelayMs]); // 添加removeDelayMs依赖
 
   // 优化：本地先删，UI立刻响应
   const handleRemove = async (key: string) => {
