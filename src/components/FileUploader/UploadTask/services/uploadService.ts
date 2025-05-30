@@ -18,11 +18,14 @@ const API_PREFIX = "http://localhost:3000/api";
 
 // 使用Worker计算文件哈希和分片哈希
 export const calculateFileHashWithWorker = async (
+  fileId: string,
   file: File
 ): Promise<{
   fileHash: string;
   chunkHashes: string[];
 }> => {
+  const { updateFileStatus } = useUploadStore.getState();
+
   return new Promise((resolve, reject) => {
     try {
       const worker = new Worker(
@@ -33,8 +36,8 @@ export const calculateFileHashWithWorker = async (
         const data = e.data;
 
         if (data.type === "progress") {
-          // 可以在这里处理进度更新，例如更新UI
-          console.log(`MD5计算进度: ${data.progress}%`);
+          // 更新UI中的计算进度
+          updateFileStatus(fileId, UploadStatus.CALCULATING, data.progress);
         } else if (data.type === "complete") {
           // 计算完成
           resolve({
@@ -130,7 +133,7 @@ export const saveFileToIndexedDB = async (
 ): Promise<boolean> => {
   try {
     // 先计算文件的 MD5 哈希
-    const { fileHash } = await calculateFileHashWithWorker(file);
+    const { fileHash } = await calculateFileHashWithWorker(fileId, file);
 
     const reader = new FileReader();
     return new Promise((resolve, reject) => {
@@ -292,8 +295,8 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
   if (!uploadFile) return;
 
   try {
-    // 更新状态为计算中
-    updateFileStatus(fileId, UploadStatus.CALCULATING);
+    // 更新状态为计算中，初始进度为0
+    updateFileStatus(fileId, UploadStatus.CALCULATING, 0);
 
     // 如果已经有哈希值（通过 addFile 设置），则使用它
     let fileHash = uploadFile.hash || "";
@@ -301,13 +304,19 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
 
     // 如果没有哈希值，则计算文件哈希和分片哈希
     if (!fileHash) {
-      const hashResult = await calculateFileHashWithWorker(uploadFile.file);
+      const hashResult = await calculateFileHashWithWorker(
+        fileId,
+        uploadFile.file
+      );
       fileHash = hashResult.fileHash;
       chunkHashes = hashResult.chunkHashes;
       updateFileHash(fileId, fileHash);
     } else {
       // 如果已有哈希值，仍需计算分片哈希
-      const hashResult = await calculateFileHashWithWorker(uploadFile.file);
+      const hashResult = await calculateFileHashWithWorker(
+        fileId,
+        uploadFile.file
+      );
       chunkHashes = hashResult.chunkHashes;
     }
 

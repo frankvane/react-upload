@@ -158,6 +158,19 @@ const FileListPanel: React.FC = () => {
               />
             );
           }
+          if (record.status === UploadStatus.CALCULATING) {
+            return (
+              <Tooltip title={`MD5计算进度: ${record.progress}%`}>
+                <Progress
+                  percent={record.progress}
+                  size="small"
+                  strokeColor="#1890ff"
+                  trailColor="#e6f7ff"
+                  status="active"
+                />
+              </Tooltip>
+            );
+          }
           return <Progress percent={record.progress} size="small" />;
         },
         width: "20%",
