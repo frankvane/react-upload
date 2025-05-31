@@ -9,6 +9,7 @@ import {
 
 import { ByteConvert } from "../services/utils";
 import React from "react";
+import type { SortOrder } from "antd/es/table/interface";
 import { StatusTagWithTooltip } from "./StatusTag";
 import type { UploadFile } from "../store/uploadStore";
 import { UploadStatus } from "../types/upload";
@@ -44,8 +45,10 @@ export const createFileListColumns = (handlers: {
       title: "文件名",
       dataIndex: "file",
       key: "fileName",
+      sorter: true,
+      sortDirections: ["ascend", "descend"] as SortOrder[],
       render: (file: File) => file.name,
-      width: "28%",
+      width: "25%",
       ellipsis: true, // 文件名过长时显示省略号
       onCell: () => ({
         style: {
@@ -59,24 +62,31 @@ export const createFileListColumns = (handlers: {
       title: "大小",
       dataIndex: "file",
       key: "fileSize",
+      sorter: true,
+      sortDirections: ["ascend", "descend"] as SortOrder[],
       render: (file: File) => ByteConvert(file.size),
-      width: "12%",
+      width: "10%",
     },
     {
       title: "状态",
       dataIndex: "status",
       key: "status",
+      sorter: true,
+      sortDirections: ["ascend", "descend"] as SortOrder[],
       render: (status: UploadStatus, record: UploadFile) => (
         <StatusTagWithTooltip
           status={status}
           errorMessage={record.errorMessage}
         />
       ),
-      width: "15%",
+      width: "10%",
     },
     {
       title: "进度",
       key: "progress",
+      dataIndex: "progress",
+      sorter: true,
+      sortDirections: ["ascend", "descend"] as SortOrder[],
       render: (_: unknown, record: UploadFile) => {
         if (
           record.status === UploadStatus.DONE ||
@@ -111,7 +121,17 @@ export const createFileListColumns = (handlers: {
         }
         return <Progress percent={record.progress} size="small" />;
       },
-      width: "20%",
+      width: "15%",
+    },
+    {
+      title: "创建时间",
+      key: "createdAt",
+      dataIndex: "createdAt",
+      sorter: true,
+      sortDirections: ["ascend", "descend"] as SortOrder[],
+      defaultSortOrder: "ascend" as SortOrder,
+      render: (createdAt: number) => new Date(createdAt).toLocaleString(),
+      width: "15%",
     },
     {
       title: "操作",

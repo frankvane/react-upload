@@ -680,7 +680,11 @@ const getOptimalConcurrency = (chunkSize: number): number => {
 };
 
 // 将文件添加到上传队列
-export const addFileToQueue = (fileId: string, concurrency?: number): void => {
+export const addFileToQueue = (
+  fileId: string,
+  priority = 0,
+  concurrency?: number
+): void => {
   const { uploadFiles, updateFileStatus } = useUploadStore.getState();
 
   // 查找文件
@@ -692,7 +696,7 @@ export const addFileToQueue = (fileId: string, concurrency?: number): void => {
 
   // 记录当前文件状态
   console.log(
-    `[队列操作] 准备将文件添加到上传队列: ${file.file.name}, 当前状态: ${file.status}`
+    `[队列操作] 准备将文件添加到上传队列: ${file.file.name}, 当前状态: ${file.status}, 优先级: ${priority}`
   );
 
   // 如果文件已经在队列中或已完成，则不再添加
@@ -718,24 +722,29 @@ export const addFileToQueue = (fileId: string, concurrency?: number): void => {
 
   // 使用更健壮的方式添加任务到队列，确保任务执行完成后不会卡住
   uploadQueue
-    .add(async () => {
-      console.log(`[队列操作] 开始处理队列中的文件: ${file.file.name}`);
-      try {
-        await processFileUpload(fileId).catch((err) => {
-          console.error(
-            `[队列错误] 处理文件 ${file.file.name} 时发生错误:`,
-            err
-          );
-          // 确保即使有错误也能继续处理队列
+    .add(
+      async () => {
+        console.log(
+          `[队列操作] 开始处理队列中的文件: ${file.file.name}, 优先级: ${priority}`
+        );
+        try {
+          await processFileUpload(fileId).catch((err) => {
+            console.error(
+              `[队列错误] 处理文件 ${file.file.name} 时发生错误:`,
+              err
+            );
+            // 确保即使有错误也能继续处理队列
+            return Promise.resolve();
+          });
+          console.log(`[队列操作] 文件 ${file.file.name} 处理结束，队列继续`);
+        } catch (err) {
+          console.error(`[队列错误] 未捕获的错误:`, err);
+          // 确保即使有未捕获的错误也能继续处理队列
           return Promise.resolve();
-        });
-        console.log(`[队列操作] 文件 ${file.file.name} 处理结束，队列继续`);
-      } catch (err) {
-        console.error(`[队列错误] 未捕获的错误:`, err);
-        // 确保即使有未捕获的错误也能继续处理队列
-        return Promise.resolve();
-      }
-    })
+        }
+      },
+      { priority: priority } // 添加优先级配置
+    )
     .catch((queueErr) => {
       console.error(
         `[队列错误] 队列处理文件 ${file.file.name} 时出现错误:`,
@@ -743,14 +752,16 @@ export const addFileToQueue = (fileId: string, concurrency?: number): void => {
       );
     });
 
-  console.log(`[队列操作] 文件 ${file.file.name} 已添加到上传队列`);
+  console.log(
+    `[队列操作] 文件 ${file.file.name} 已添加到上传队列, 优先级: ${priority}`
+  );
 };
 
 // 重试上传
-export const retryUpload = (fileId: string): void => {
+export const retryUpload = (fileId: string, priority = 0): void => {
   const { resetFile } = useUploadStore.getState();
   resetFile(fileId);
-  addFileToQueue(fileId);
+  addFileToQueue(fileId, priority);
 };
 
 // 暂停单个文件上传
@@ -773,7 +784,7 @@ export const pauseFile = (fileId: string): void => {
 };
 
 // 恢复单个文件上传
-export const resumeFile = (fileId: string): void => {
+export const resumeFile = (fileId: string, priority = 0): void => {
   const { uploadFiles } = useUploadStore.getState();
   const file = uploadFiles.find((f) => f.id === fileId);
 
@@ -789,10 +800,12 @@ export const resumeFile = (fileId: string): void => {
     return;
   }
 
-  console.log(`恢复上传文件: ${fileId}, 文件名: ${file.file.name}`);
+  console.log(
+    `恢复上传文件: ${fileId}, 文件名: ${file.file.name}, 优先级: ${priority}`
+  );
 
   // 重新添加到上传队列
-  addFileToQueue(fileId);
+  addFileToQueue(fileId, priority);
 };
 
 // 暂停队列
@@ -839,8 +852,9 @@ export const resumeQueue = async (concurrency?: number): Promise<void> => {
 
       // 确保文件状态为暂停状态
       if (file.status === UploadStatus.PAUSED) {
-        // 将文件添加到上传队列
-        addFileToQueue(file.id, concurrency);
+        // 将文件添加到上传队列，优先级基于索引
+        const priority = pausedFiles.length - i; // 较早的文件优先级更高
+        addFileToQueue(file.id, priority, concurrency);
 
         // 每添加一个文件，等待100毫秒，避免过度阻塞
         if (i < pausedFiles.length - 1) {
@@ -880,4 +894,61 @@ export const clearAllUploads = async (): Promise<boolean> => {
     console.error("清除所有上传记录失败:", error);
     return false;
   }
+};
+
+// 顺序上传多个文件
+export const uploadFilesInSequence = async (
+  fileIds: string[]
+): Promise<void> => {
+  // 先清空当前队列
+  clearQueue();
+
+  console.log(`[顺序上传] 开始按顺序上传 ${fileIds.length} 个文件`);
+
+  // 逐个上传文件
+  for (let i = 0; i < fileIds.length; i++) {
+    const fileId = fileIds[i];
+    const { uploadFiles } = useUploadStore.getState();
+    const file = uploadFiles.find((f) => f.id === fileId);
+
+    if (!file) {
+      console.error(`[顺序上传] 文件ID ${fileId} 不存在，跳过`);
+      continue;
+    }
+
+    console.log(
+      `[顺序上传] 开始上传第 ${i + 1}/${fileIds.length} 个文件: ${
+        file.file.name
+      }`
+    );
+
+    // 添加到队列
+    addFileToQueue(fileId, 9999);
+
+    // 等待文件上传完成
+    await new Promise<void>((resolve) => {
+      const checkInterval = setInterval(() => {
+        const currentState = useUploadStore.getState();
+        const currentFile = currentState.uploadFiles.find(
+          (f) => f.id === fileId
+        );
+
+        if (
+          currentFile &&
+          (currentFile.status === UploadStatus.DONE ||
+            currentFile.status === UploadStatus.ERROR ||
+            currentFile.status === UploadStatus.INSTANT ||
+            currentFile.status === UploadStatus.MERGE_ERROR)
+        ) {
+          console.log(
+            `[顺序上传] 文件 ${file.file.name} 上传完成，状态: ${currentFile.status}`
+          );
+          clearInterval(checkInterval);
+          resolve();
+        }
+      }, 500);
+    });
+  }
+
+  console.log(`[顺序上传] 所有 ${fileIds.length} 个文件上传完成`);
 };
