@@ -1,7 +1,7 @@
-import { Card, Progress, Space, Typography } from 'antd';
-import React, { useEffect, useState } from 'react';
+import { Card, Progress, Space, Typography } from "antd";
+import React, { useEffect, useState } from "react";
 
-import { BarChartOutlined } from '@ant-design/icons';
+import { BarChartOutlined } from "@ant-design/icons";
 
 const { Text } = Typography;
 
@@ -14,20 +14,28 @@ interface MemoryInfo {
 
 const MemoryUsage: React.FC = () => {
   const [memoryInfo, setMemoryInfo] = useState<MemoryInfo>({
-    usedMemoryMB: '0',
-    totalMemoryMB: '0',
+    usedMemoryMB: "0",
+    totalMemoryMB: "0",
     usagePercentage: 0,
-    isAvailable: false
+    isAvailable: false,
   });
 
   useEffect(() => {
     // 定义获取内存信息的函数
     const updateMemoryInfo = () => {
-      if (performance && 'memory' in performance) {
+      if (performance && "memory" in performance) {
         const memoryData = (performance as any).memory;
         if (memoryData) {
-          const usedMemoryMB = (memoryData.usedJSHeapSize / 1024 / 1024).toFixed(2);
-          const totalMemoryMB = (memoryData.totalJSHeapSize / 1024 / 1024).toFixed(2);
+          const usedMemoryMB = (
+            memoryData.usedJSHeapSize /
+            1024 /
+            1024
+          ).toFixed(2);
+          const totalMemoryMB = (
+            memoryData.totalJSHeapSize /
+            1024 /
+            1024
+          ).toFixed(2);
           const usagePercentage = Math.min(
             Math.round((Number(usedMemoryMB) / Number(totalMemoryMB)) * 100),
             100
@@ -37,7 +45,7 @@ const MemoryUsage: React.FC = () => {
             usedMemoryMB,
             totalMemoryMB,
             usagePercentage,
-            isAvailable: true
+            isAvailable: true,
           });
         }
       }
@@ -55,18 +63,34 @@ const MemoryUsage: React.FC = () => {
 
   if (!memoryInfo.isAvailable) {
     return (
-      <Card size="small" title={<><BarChartOutlined /> 内存使用状态</>} style={{ width: '100%', marginBottom: 16 }}>
+      <Card
+        size="small"
+        title={
+          <>
+            <BarChartOutlined /> 内存使用状态
+          </>
+        }
+        style={{ width: "100%", marginBottom: 16 }}
+      >
         <Text type="secondary">此浏览器不支持内存使用监控</Text>
       </Card>
     );
   }
 
   return (
-    <Card size="small" title={<><BarChartOutlined /> 内存使用状态</>} style={{ width: '100%', marginBottom: 16 }}>
-      <Space direction="vertical" style={{ width: '100%' }}>
+    <Card
+      size="small"
+      title={
+        <>
+          <BarChartOutlined /> 内存使用状态
+        </>
+      }
+      style={{ width: "100%", marginBottom: 16 }}
+    >
+      <Space direction="vertical" style={{ width: "100%" }}>
         <Progress
           percent={memoryInfo.usagePercentage}
-          status={memoryInfo.usagePercentage > 80 ? 'exception' : 'normal'}
+          status={memoryInfo.usagePercentage > 80 ? "exception" : "normal"}
           size="small"
         />
         <Text>
