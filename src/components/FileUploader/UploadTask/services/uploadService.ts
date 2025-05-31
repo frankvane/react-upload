@@ -2,9 +2,13 @@ import * as api from "./api";
 import * as dbService from "./dbService";
 
 import PQueue from "p-queue";
+import React from "react";
 import SparkMD5 from "spark-md5";
 import type { UploadFileMeta } from "../types/file";
 import { UploadStatus } from "../types/upload";
+import { message } from "antd";
+import pRetry from "p-retry";
+import { useNetworkType } from "../hooks/useNetworkType";
 import { useUploadStore } from "../store/uploadStore";
 
 // 默认分片大小：2MB
@@ -317,6 +321,40 @@ export const uploadFileChunk = async (
   }
 };
 
+// 上传文件分片（带自动重试）
+export const uploadFileChunkWithRetry = async (
+  fileId: string,
+  file: File,
+  chunkIndex: number,
+  chunkSize: number,
+  chunkHash: string,
+  totalChunks: number,
+  abortSignal?: AbortSignal
+): Promise<boolean> => {
+  return pRetry(
+    async () => {
+      return await uploadFileChunk(
+        fileId,
+        file,
+        chunkIndex,
+        chunkSize,
+        chunkHash,
+        totalChunks,
+        abortSignal
+      );
+    },
+    {
+      retries: 3,
+      onFailedAttempt: (error) => {
+        console.warn(
+          `分片[${chunkIndex}]上传失败，正在重试: 第${error.attemptNumber}次，还剩${error.retriesLeft}次`,
+          error
+        );
+      },
+    }
+  );
+};
+
 // 合并文件分片
 export const mergeFileChunks = async (
   fileId: string,
@@ -550,7 +588,7 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
                   chunkCount - 1
                 }`
               );
-              const success = await uploadFileChunk(
+              const chunkUploadResult = await uploadFileChunkWithRetry(
                 fileId,
                 uploadFile.file,
                 chunkIndex,
@@ -560,7 +598,7 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
                 abortController.signal
               );
 
-              if (success) {
+              if (chunkUploadResult) {
                 successCount++;
                 incrementUploadedChunks(fileId);
                 console.log(
@@ -952,3 +990,32 @@ export const uploadFilesInSequence = async (
 
   console.log(`[顺序上传] 所有 ${fileIds.length} 个文件上传完成`);
 };
+
+// 自动根据网络状态暂停/恢复上传队列的 hook
+export function useAutoPauseQueueOnNetworkChange() {
+  const { networkType } = useNetworkType();
+  React.useEffect(() => {
+    if (networkType === "offline") {
+      pauseQueue();
+      message.warning("网络断开，上传已自动暂停");
+    } else {
+      resumeQueue();
+      message.success("网络恢复，上传已自动恢复");
+    }
+  }, [networkType]);
+}
+
+// 断网检测：断网时暂停队列，联网后自动恢复
+if (
+  typeof window !== "undefined" &&
+  typeof window.addEventListener === "function"
+) {
+  window.addEventListener("offline", () => {
+    console.warn("[网络状态] 检测到断网，自动暂停上传队列");
+    pauseQueue();
+  });
+  window.addEventListener("online", () => {
+    console.info("[网络状态] 网络已恢复，自动恢复上传队列");
+    resumeQueue();
+  });
+}

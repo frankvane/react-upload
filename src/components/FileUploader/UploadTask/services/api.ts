@@ -108,6 +108,25 @@ export async function getFileStatus(
   }
 }
 
+// fetchWithTimeout 工具函数
+export async function fetchWithTimeout(
+  resource: RequestInfo,
+  options: any = {},
+  timeout = 15000
+) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  try {
+    const response = await fetch(resource, {
+      ...options,
+      signal: controller.signal,
+    });
+    return response;
+  } finally {
+    clearTimeout(id);
+  }
+}
+
 // 上传单个分片
 export async function uploadFileChunk(
   {
@@ -131,6 +150,7 @@ export async function uploadFileChunk(
     headers?: Record<string, string>;
     paramsTransform?: (params: any, type: string) => any;
     signal?: AbortSignal;
+    timeout?: number;
   }
 ) {
   const formData = new FormData();
@@ -152,12 +172,16 @@ export async function uploadFileChunk(
   const uploadUrl = options?.url || `${prefix}/file/upload`;
 
   try {
-    const res = await fetch(uploadUrl, {
-      method: "POST",
-      body: formData,
-      headers: options?.headers || {},
-      signal: options?.signal,
-    });
+    const res = await fetchWithTimeout(
+      uploadUrl,
+      {
+        method: "POST",
+        body: formData,
+        headers: options?.headers || {},
+        signal: options?.signal,
+      },
+      options?.timeout || 15000
+    );
     const data = await res.json();
     if (data.code !== 200) throw new Error(data.message || "分片上传失败");
     return data;

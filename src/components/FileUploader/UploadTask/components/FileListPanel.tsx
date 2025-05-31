@@ -14,6 +14,7 @@ import {
   resumeFile,
   retryUpload,
   uploadFilesInSequence,
+  useAutoPauseQueueOnNetworkChange,
 } from "../services/uploadService";
 
 import FileListToolbar from "./FileListToolbar";
@@ -28,6 +29,8 @@ import { useUploadFileStatus } from "../hooks/useUploadFileStatus";
 import { useUploadStore } from "../store/uploadStore";
 
 const FileListPanel: React.FC = () => {
+  useAutoPauseQueueOnNetworkChange();
+
   // 使用选择器函数分别获取状态和动作，避免不必要的重新渲染
   const uploadFiles = useUploadStore((state) => state.uploadFiles);
   const removeFile = useUploadStore((state) => state.removeFile);
