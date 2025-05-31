@@ -35,11 +35,17 @@ export const createFileListColumns = (handlers: {
 
   return [
     {
+      title: "序号",
+      key: "index",
+      width: "5%",
+      render: (_: unknown, __: unknown, index: number) => index + 1,
+    },
+    {
       title: "文件名",
       dataIndex: "file",
       key: "fileName",
       render: (file: File) => file.name,
-      width: "30%",
+      width: "28%",
       ellipsis: true, // 文件名过长时显示省略号
       onCell: () => ({
         style: {
@@ -54,7 +60,7 @@ export const createFileListColumns = (handlers: {
       dataIndex: "file",
       key: "fileSize",
       render: (file: File) => ByteConvert(file.size),
-      width: "15%",
+      width: "12%",
     },
     {
       title: "状态",
