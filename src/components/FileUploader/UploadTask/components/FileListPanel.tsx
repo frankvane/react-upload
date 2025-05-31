@@ -89,6 +89,32 @@ const FileListPanel: React.FC = () => {
     }
   }, [sortedFiles]);
 
+  // 断点续传提示逻辑
+  const [resumeInfo, setResumeInfo] = React.useState<string | null>(null);
+  useEffect(() => {
+    // 检查是否有文件处于断点续传状态
+    const uploadingFile = sortedFiles.find(
+      (f) => f.status === UploadStatus.UPLOADING
+    );
+    if (
+      uploadingFile &&
+      uploadingFile.chunkCount &&
+      uploadingFile.uploadedChunks !== undefined
+    ) {
+      const skipped = uploadingFile.uploadedChunks || 0;
+      const total = uploadingFile.chunkCount;
+      if (skipped > 0 && skipped < total) {
+        setResumeInfo(
+          `断点续传：已跳过${skipped}个分片，补传${total - skipped}个分片`
+        );
+      } else {
+        setResumeInfo(null);
+      }
+    } else {
+      setResumeInfo(null);
+    }
+  }, [sortedFiles]);
+
   // 处理表格排序变化
   const handleTableChange = (
     _pagination: TablePaginationConfig,
@@ -231,6 +257,11 @@ const FileListPanel: React.FC = () => {
           onClearCompleted={handleClearCompleted}
         />
       </div>
+      {resumeInfo && (
+        <div style={{ color: "#faad14", marginBottom: 8, fontWeight: 500 }}>
+          {resumeInfo}
+        </div>
+      )}
 
       <div className="file-list-table-container">
         <Table

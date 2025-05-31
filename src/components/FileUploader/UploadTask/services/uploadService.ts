@@ -519,9 +519,7 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
       .map((_, index) => index)
       .filter((index) => !uploadedChunks.includes(index));
 
-    console.log(
-      `[上传进度] 文件 ${fileName} 共 ${chunkCount} 个分片，已上传 ${uploadedChunks.length} 个，需要上传 ${chunksToUpload.length} 个`
-    );
+    console.log(`[断点续传] 本次只需上传分片索引:`, chunksToUpload);
 
     // 如果所有分片都已上传，直接合并
     if (chunksToUpload.length === 0) {
