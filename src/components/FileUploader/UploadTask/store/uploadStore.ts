@@ -5,10 +5,17 @@ import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 import { generateStableFileId } from "../utils/fileUtils";
 
+// 保存一个全局的文件映射表，用于存储文件引用，但不放入zustand状态中
+// 这样可以在需要时获取文件，但不会增加状态的内存占用
+const fileMap = new Map<string, File>();
+
 // 定义单个上传文件的状态结构
 export interface UploadFile {
   id: string; // 唯一ID
-  file: File; // 原始文件对象
+  fileName: string; // 文件名
+  fileSize: number; // 文件大小
+  fileType: string; // 文件类型
+  lastModified: number; // 最后修改时间
   status: UploadStatus; // 上传状态
   progress: number; // 上传进度 (0-100)
   hash?: string; // 文件哈希值
@@ -38,6 +45,7 @@ interface UploadState {
   clearCompleted: () => void; // 清除已完成的文件
   resetFile: (id: string) => void; // 重置文件状态，用于重试
   initializeFromIndexedDB: () => Promise<void>; // 从IndexedDB初始化文件列表
+  getFile: (id: string) => File | undefined; // 根据ID获取文件对象
 }
 
 // 创建 Zustand store
@@ -45,6 +53,11 @@ export const useUploadStore = create<UploadState>()(
   devtools(
     (set) => ({
       uploadFiles: [],
+
+      // 获取文件对象的方法
+      getFile: (id: string) => {
+        return fileMap.get(id);
+      },
 
       addFile: (file: File, md5?: string) => {
         // 使用 MD5 作为文件 ID，如果没有提供则使用稳定的文件 ID 生成方式
@@ -85,13 +98,19 @@ export const useUploadStore = create<UploadState>()(
               };
             }
 
-            // 如果文件不在队列中，则添加到队列
+            // 将文件保存到映射表中，但不直接保存到状态中
+            fileMap.set(fileId, file);
+
+            // 如果文件不在队列中，则添加到队列（只存储必要的文件信息，减少内存占用）
             return {
               uploadFiles: [
                 ...state.uploadFiles,
                 {
                   id: fileId,
-                  file,
+                  fileName: file.name,
+                  fileSize: file.size,
+                  fileType: file.type,
+                  lastModified: file.lastModified,
                   status: UploadStatus.QUEUED_FOR_UPLOAD, // 选中文件后即为等待上传状态
                   progress: 0,
                   hash: md5, // 如果提供了 MD5，则设置哈希值
@@ -210,6 +229,9 @@ export const useUploadStore = create<UploadState>()(
       },
 
       removeFile: (id) => {
+        // 从fileMap中移除文件对象，释放内存
+        fileMap.delete(id);
+
         set(
           (state) => ({
             uploadFiles: state.uploadFiles.filter(
@@ -223,13 +245,27 @@ export const useUploadStore = create<UploadState>()(
 
       clearCompleted: () => {
         set(
-          (state) => ({
-            uploadFiles: state.uploadFiles.filter(
-              (uploadFile) =>
-                uploadFile.status !== UploadStatus.DONE &&
-                uploadFile.status !== UploadStatus.INSTANT
-            ),
-          }),
+          (state) => {
+            // 找出已完成的文件ID
+            const completedIds = state.uploadFiles
+              .filter(
+                (file) =>
+                  file.status === UploadStatus.DONE ||
+                  file.status === UploadStatus.INSTANT
+              )
+              .map((file) => file.id);
+
+            // 从fileMap中移除这些文件
+            completedIds.forEach((id) => fileMap.delete(id));
+
+            return {
+              uploadFiles: state.uploadFiles.filter(
+                (uploadFile) =>
+                  uploadFile.status !== UploadStatus.DONE &&
+                  uploadFile.status !== UploadStatus.INSTANT
+              ),
+            };
+          },
           false,
           { type: "clearCompleted" }
         );
@@ -272,10 +308,16 @@ export const useUploadStore = create<UploadState>()(
               lastModified: meta.lastModified,
             });
 
+            // 将文件保存到映射表中
+            fileMap.set(meta.key, file);
+
             // 使用 meta.key 作为文件 ID，它是文件的 MD5 哈希值
             return {
               id: meta.key,
-              file,
+              fileName: meta.name,
+              fileSize: meta.size,
+              fileType: meta.type,
+              lastModified: meta.lastModified,
               status: UploadStatus.QUEUED_FOR_UPLOAD, // 初始状态为待上传
               progress: 0,
               hash: meta.key, // 使用 MD5 作为哈希值

@@ -15,19 +15,19 @@ export function useSortedUploadFiles(uploadFiles: UploadFile[]) {
     const files = [...uploadFiles];
     if (!sortState.columnKey || sortState.columnKey === "lastModified") {
       return files.sort((a, b) => {
-        const result = a.file.lastModified - b.file.lastModified;
+        const result = a.lastModified - b.lastModified;
         return sortState.order === "ascend" ? result : -result;
       });
     }
     if (sortState.columnKey === "fileName") {
       return files.sort((a, b) => {
-        const result = a.file.name.localeCompare(b.file.name);
+        const result = a.fileName.localeCompare(b.fileName);
         return sortState.order === "ascend" ? result : -result;
       });
     }
     if (sortState.columnKey === "fileSize") {
       return files.sort((a, b) => {
-        const result = a.file.size - b.file.size;
+        const result = a.fileSize - b.fileSize;
         return sortState.order === "ascend" ? result : -result;
       });
     }

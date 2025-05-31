@@ -386,57 +386,67 @@ export const mergeFileChunks = async (
   }
 };
 
-// 处理文件上传
+// 处理单个文件上传
 export const processFileUpload = async (fileId: string): Promise<void> => {
   const {
     uploadFiles,
     updateFileStatus,
     updateFileHash,
     updateFileChunks,
-    incrementUploadedChunks,
     updatePausedChunks,
     setErrorMessage,
+    getFile,
+    incrementUploadedChunks,
   } = useUploadStore.getState();
 
-  // 查找要处理的文件
-  const uploadFile = uploadFiles.find((uf) => uf.id === fileId);
+  // 获取当前的上传文件信息
+  const uploadFile = uploadFiles.find((file) => file.id === fileId);
+
   if (!uploadFile) {
-    console.error(`[上传错误] 文件ID ${fileId} 未找到，无法上传`);
+    console.warn(`[上传警告] 找不到文件ID: ${fileId}`);
+    return;
+  }
+
+  // 使用getFile获取File对象
+  const file = getFile(fileId);
+  if (!file) {
+    console.error(`[上传错误] 找不到文件对象: ${fileId}`);
     return;
   }
 
   console.log(
-    `[上传开始] 处理文件: ${uploadFile.file.name}, 状态: ${uploadFile.status}`
+    `[上传开始] 处理文件: ${uploadFile.fileName}, 状态: ${uploadFile.status}`
   );
-
-  // 如果文件不是等待上传状态，则重置为等待上传状态
-  if (
-    uploadFile.status !== UploadStatus.QUEUED_FOR_UPLOAD &&
-    uploadFile.status !== UploadStatus.QUEUED &&
-    uploadFile.status !== UploadStatus.PAUSED
-  ) {
-    console.log(
-      `[上传警告] 文件 ${uploadFile.file.name} 状态不是等待上传 (${uploadFile.status})`
-    );
-    return;
-  }
 
   try {
     // 更新状态为计算哈希中
     updateFileStatus(fileId, UploadStatus.CALCULATING, 0);
-    console.log(`[上传进度] 文件 ${uploadFile.file.name} 开始计算哈希`);
 
-    // 尝试从 IndexedDB 获取文件元数据，包括预先保存的切片大小
+    // 检查状态是否合法
+    if (
+      uploadFile.status !== UploadStatus.QUEUED_FOR_UPLOAD &&
+      uploadFile.status !== UploadStatus.QUEUED &&
+      uploadFile.status !== UploadStatus.PAUSED
+    ) {
+      console.warn(
+        `[上传警告] 文件 ${uploadFile.fileName} 状态不是等待上传 (${uploadFile.status})`
+      );
+      return;
+    }
+
+    // 保存文件到 IndexedDB
+    console.log(`[上传进度] 文件 ${uploadFile.fileName} 开始计算哈希`);
+
     let savedChunkSize: number | undefined;
+
+    // 检查是否已经保存到 IndexedDB
     try {
-      const fileMeta = await dbService.getFileMeta(fileId);
-      if (fileMeta && fileMeta.chunkSize) {
-        savedChunkSize = fileMeta.chunkSize;
+      const existingData = await dbService.getFileMeta(fileId);
+      if (existingData) {
         console.log(
-          `[上传配置] 从 IndexedDB 获取到的文件 ${fileId} 切片大小: ${
-            savedChunkSize / (1024 * 1024)
-          }MB`
+          `[上传进度] 文件 ${uploadFile.fileName} 已存在于 IndexedDB 中，使用现有记录`
         );
+        savedChunkSize = existingData.chunkSize;
       }
     } catch (err) {
       console.warn(
@@ -448,11 +458,11 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
     // 使用 Worker 计算文件哈希和分片哈希
     const { fileHash, chunkHashes } = await calculateFileHashWithWorker(
       fileId,
-      uploadFile.file
+      file
     );
     console.log(
       `[上传进度] 文件 ${
-        uploadFile.file.name
+        uploadFile.fileName
       } 哈希计算完成: ${fileHash.substring(0, 8)}...`
     );
 
@@ -461,11 +471,11 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
 
     // 准备上传
     updateFileStatus(fileId, UploadStatus.PREPARING_UPLOAD, 0);
-    console.log(`[上传进度] 文件 ${uploadFile.file.name} 准备上传`);
+    console.log(`[上传进度] 文件 ${uploadFile.fileName} 准备上传`);
 
     // 检查是否可以秒传
-    const fileName = uploadFile.file.name;
-    const fileSize = uploadFile.file.size;
+    const fileName = uploadFile.fileName;
+    const fileSize = uploadFile.fileSize;
     const chunkSize = savedChunkSize || DEFAULT_CHUNK_SIZE; // 使用保存的切片大小或默认值
     const chunkCount = Math.ceil(fileSize / chunkSize);
 
@@ -588,7 +598,7 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
               );
               const chunkUploadResult = await uploadFileChunkWithRetry(
                 fileId,
-                uploadFile.file,
+                file, // 使用getFile获取的file对象
                 chunkIndex,
                 chunkSize,
                 chunkHashes[chunkIndex],
@@ -640,57 +650,48 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
                       error
                     );
                     setErrorMessage(fileId, `合并失败: ${error.message}`);
-                    updateFileStatus(fileId, UploadStatus.ERROR, 0);
+                    updateFileStatus(fileId, UploadStatus.MERGE_ERROR, 0);
                   }
                 }
-              } else {
-                console.warn(
-                  `[上传警告] 文件 ${fileName} 分片 ${chunkIndex} 上传失败`
-                );
               }
             } catch (error: any) {
-              if (error.name === "AbortError") {
-                console.log(
-                  `[上传中断] 文件 ${fileName} 分片 ${chunkIndex} 上传已中断`
-                );
-              } else {
-                console.error(
-                  `[上传错误] 上传文件 ${fileName} 分片 ${chunkIndex} 失败:`,
-                  error
-                );
-                // 仅在非中断错误时更新状态
-                if (!isAborted) {
-                  setErrorMessage(
-                    fileId,
-                    `上传分片 ${chunkIndex} 失败: ${error.message}`
-                  );
-                  updateFileStatus(fileId, UploadStatus.ERROR, 0);
-                  abortController.abort();
-                }
-              }
+              console.error(
+                `[上传错误] 文件 ${fileName} 分片 ${chunkIndex} 上传失败:`,
+                error
+              );
+              isAborted = true;
+              chunkQueue.clear();
+              setErrorMessage(fileId, `分片上传失败: ${error.message}`);
+              updateFileStatus(fileId, UploadStatus.ERROR, 0);
             }
           })
         )
       );
-    } catch (uploadError) {
-      console.error(`[上传错误] 上传过程发生异常:`, uploadError);
-      if (!isAborted) {
-        setErrorMessage(fileId, `上传异常: ${uploadError}`);
+
+      // 如果没有中断但也没有全部完成，说明有部分分片上传失败
+      if (!isAborted && successCount < chunksToUpload.length) {
+        console.warn(
+          `[上传警告] 文件 ${fileName} 有 ${
+            chunksToUpload.length - successCount
+          } 个分片上传失败`
+        );
+        setErrorMessage(
+          fileId,
+          `有 ${chunksToUpload.length - successCount} 个分片上传失败，请重试`
+        );
         updateFileStatus(fileId, UploadStatus.ERROR, 0);
       }
+    } catch (error: any) {
+      console.error(`[上传错误] 文件 ${fileName} 上传失败:`, error);
+      setErrorMessage(fileId, `上传失败: ${error.message}`);
+      updateFileStatus(fileId, UploadStatus.ERROR, 0);
+    } finally {
+      // 清除中断控制器
+      delete fileAbortControllers[fileId];
     }
-
-    // 清除已完成或取消的中断控制器
-    delete fileAbortControllers[fileId];
-    console.log(
-      `[上传结束] 文件 ${fileName} 处理完成，状态: ${
-        useUploadStore.getState().uploadFiles.find((f) => f.id === fileId)
-          ?.status
-      }`
-    );
   } catch (error: any) {
     console.error(
-      `[上传错误] 处理文件 ${uploadFile.file.name} 上传失败:`,
+      `[上传错误] 处理文件 ${uploadFile.fileName} 上传失败:`,
       error
     );
     setErrorMessage(fileId, error.message);
@@ -732,7 +733,7 @@ export const addFileToQueue = (
 
   // 记录当前文件状态
   console.log(
-    `[队列操作] 准备将文件添加到上传队列: ${file.file.name}, 当前状态: ${file.status}, 优先级: ${priority}`
+    `[队列操作] 准备将文件添加到上传队列: ${file.fileName}, 当前状态: ${file.status}, 优先级: ${priority}`
   );
 
   // 如果文件已经在队列中或已完成，则不再添加
@@ -743,7 +744,7 @@ export const addFileToQueue = (
     file.status !== UploadStatus.PAUSED
   ) {
     console.log(
-      `[队列操作] 文件 ${file.file.name} 已在队列中或已完成，不再添加`
+      `[队列操作] 文件 ${file.fileName} 已在队列中或已完成，不再添加`
     );
     return;
   }
@@ -761,18 +762,18 @@ export const addFileToQueue = (
     .add(
       async () => {
         console.log(
-          `[队列操作] 开始处理队列中的文件: ${file.file.name}, 优先级: ${priority}`
+          `[队列操作] 开始处理队列中的文件: ${file.fileName}, 优先级: ${priority}`
         );
         try {
           await processFileUpload(fileId).catch((err) => {
             console.error(
-              `[队列错误] 处理文件 ${file.file.name} 时发生错误:`,
+              `[队列错误] 处理文件 ${file.fileName} 时发生错误:`,
               err
             );
             // 确保即使有错误也能继续处理队列
             return Promise.resolve();
           });
-          console.log(`[队列操作] 文件 ${file.file.name} 处理结束，队列继续`);
+          console.log(`[队列操作] 文件 ${file.fileName} 处理结束，队列继续`);
         } catch (err) {
           console.error(`[队列错误] 未捕获的错误:`, err);
           // 确保即使有未捕获的错误也能继续处理队列
@@ -783,13 +784,13 @@ export const addFileToQueue = (
     )
     .catch((queueErr) => {
       console.error(
-        `[队列错误] 队列处理文件 ${file.file.name} 时出现错误:`,
+        `[队列错误] 队列处理文件 ${file.fileName} 时出现错误:`,
         queueErr
       );
     });
 
   console.log(
-    `[队列操作] 文件 ${file.file.name} 已添加到上传队列, 优先级: ${priority}`
+    `[队列操作] 文件 ${file.fileName} 已添加到上传队列, 优先级: ${priority}`
   );
 };
 
@@ -837,7 +838,7 @@ export const resumeFile = (fileId: string, priority = 0): void => {
   }
 
   console.log(
-    `恢复上传文件: ${fileId}, 文件名: ${file.file.name}, 优先级: ${priority}`
+    `恢复上传文件: ${fileId}, 文件名: ${file.fileName}, 优先级: ${priority}`
   );
 
   // 重新添加到上传队列
@@ -884,7 +885,7 @@ export const resumeQueue = async (concurrency?: number): Promise<void> => {
     // 使用延迟策略添加文件，避免同时添加太多文件到队列造成阻塞
     for (let i = 0; i < pausedFiles.length; i++) {
       const file = pausedFiles[i];
-      console.log(`[队列操作] 恢复文件 ${file.file.name}`);
+      console.log(`[队列操作] 恢复文件 ${file.fileName}`);
 
       // 确保文件状态为暂停状态
       if (file.status === UploadStatus.PAUSED) {
@@ -954,7 +955,7 @@ export const uploadFilesInSequence = async (
 
     console.log(
       `[顺序上传] 开始上传第 ${i + 1}/${fileIds.length} 个文件: ${
-        file.file.name
+        file.fileName
       }`
     );
 
@@ -977,7 +978,7 @@ export const uploadFilesInSequence = async (
             currentFile.status === UploadStatus.MERGE_ERROR)
         ) {
           console.log(
-            `[顺序上传] 文件 ${file.file.name} 上传完成，状态: ${currentFile.status}`
+            `[顺序上传] 文件 ${file.fileName} 上传完成，状态: ${currentFile.status}`
           );
           clearInterval(checkInterval);
           resolve();

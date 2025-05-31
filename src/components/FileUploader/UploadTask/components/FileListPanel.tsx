@@ -229,7 +229,7 @@ const FileListPanel: React.FC = () => {
 
     console.log(
       "按当前顺序上传文件：",
-      waitingFiles.map((f) => f.file.name)
+      waitingFiles.map((f) => f.fileName)
     );
 
     // 使用顺序上传功能

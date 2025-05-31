@@ -1,7 +1,8 @@
-import { Card, Progress, Space, Typography } from "antd";
+import { BarChartOutlined, ClearOutlined } from "@ant-design/icons";
+import { Button, Card, Progress, Space, Tooltip, Typography } from "antd";
 import React, { useEffect, useState } from "react";
 
-import { BarChartOutlined } from "@ant-design/icons";
+import { memoryManager } from "../../utils/memoryOptimizer";
 
 const { Text } = Typography;
 
@@ -19,6 +20,8 @@ const MemoryUsage: React.FC = () => {
     usagePercentage: 0,
     isAvailable: false,
   });
+
+  const [isOptimizing, setIsOptimizing] = useState(false);
 
   useEffect(() => {
     // 定义获取内存信息的函数
@@ -61,6 +64,26 @@ const MemoryUsage: React.FC = () => {
     return () => clearInterval(intervalId);
   }, []);
 
+  // 手动优化内存
+  const handleOptimizeMemory = () => {
+    setIsOptimizing(true);
+
+    // 使用setTimeout确保UI能够更新
+    setTimeout(() => {
+      try {
+        memoryManager.forceOptimize();
+
+        // 延迟更新状态，使用户能看到优化按钮的加载状态
+        setTimeout(() => {
+          setIsOptimizing(false);
+        }, 1000);
+      } catch (error) {
+        console.error("内存优化失败:", error);
+        setIsOptimizing(false);
+      }
+    }, 100);
+  };
+
   if (!memoryInfo.isAvailable) {
     return (
       <Card
@@ -77,6 +100,15 @@ const MemoryUsage: React.FC = () => {
     );
   }
 
+  // 根据内存使用率决定状态颜色
+  const getStatusColor = (
+    percentage: number
+  ): "exception" | "normal" | "success" => {
+    if (percentage > 80) return "exception";
+    if (percentage > 60) return "normal";
+    return "success";
+  };
+
   return (
     <Card
       size="small"
@@ -86,11 +118,22 @@ const MemoryUsage: React.FC = () => {
         </>
       }
       style={{ width: "100%", marginBottom: 16 }}
+      extra={
+        <Tooltip title="清理内存">
+          <Button
+            type="text"
+            icon={<ClearOutlined />}
+            onClick={handleOptimizeMemory}
+            loading={isOptimizing}
+            disabled={isOptimizing}
+          />
+        </Tooltip>
+      }
     >
       <Space direction="vertical" style={{ width: "100%" }}>
         <Progress
           percent={memoryInfo.usagePercentage}
-          status={memoryInfo.usagePercentage > 80 ? "exception" : "normal"}
+          status={getStatusColor(memoryInfo.usagePercentage)}
           size="small"
         />
         <Text>

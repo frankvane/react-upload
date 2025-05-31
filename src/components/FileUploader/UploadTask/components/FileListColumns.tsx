@@ -42,11 +42,11 @@ export const createFileListColumns = (handlers: {
     },
     {
       title: "文件名",
-      dataIndex: "file",
+      dataIndex: "fileName",
       key: "fileName",
       sorter: true,
       sortDirections: ["ascend", "descend"] as SortOrder[],
-      render: (file: File) => file.name,
+      render: (fileName: string) => fileName,
       width: "25%",
       ellipsis: true, // 文件名过长时显示省略号
       onCell: () => ({
@@ -59,11 +59,11 @@ export const createFileListColumns = (handlers: {
     },
     {
       title: "大小",
-      dataIndex: "file",
+      dataIndex: "fileSize",
       key: "fileSize",
       sorter: true,
       sortDirections: ["ascend", "descend"] as SortOrder[],
-      render: (file: File) => ByteConvert(file.size),
+      render: (fileSize: number) => ByteConvert(fileSize),
       width: "10%",
     },
     {
@@ -125,10 +125,10 @@ export const createFileListColumns = (handlers: {
     {
       title: "修改时间",
       key: "lastModified",
-      dataIndex: "file",
+      dataIndex: "lastModified",
       sorter: true,
       sortDirections: ["ascend", "descend"] as SortOrder[],
-      render: (file: File) => new Date(file.lastModified).toLocaleString(),
+      render: (lastModified: number) => new Date(lastModified).toLocaleString(),
       width: "15%",
     },
     {

@@ -5,6 +5,7 @@ import FileListPanel from "./components/FileListPanel";
 import FileSelector from "./components/FileSelector";
 import MemoryUsage from "../../MemoryUsage";
 import UploadButton from "./components/UploadButton";
+import { memoryManager } from "../../../utils/memoryOptimizer";
 import { useUploadStore } from "./store/uploadStore";
 
 interface UploadTaskProps {
@@ -32,6 +33,19 @@ const UploadTask: React.FC<UploadTaskProps> = ({
   useEffect(() => {
     initializeFromIndexedDB();
   }, [initializeFromIndexedDB]);
+
+  // 在组件挂载时启动内存管理器，并在卸载时停止
+  useEffect(() => {
+    // 启动内存管理器，设置为每15秒检查一次，内存使用率超过70%时触发优化
+    memoryManager.start(15000, 0.7);
+
+    // 在组件卸载时停止内存管理器
+    return () => {
+      memoryManager.stop();
+      // 在组件卸载时清理所有URL资源
+      memoryManager.cleanupAllURLs();
+    };
+  }, []);
 
   return (
     <Card title={title}>
