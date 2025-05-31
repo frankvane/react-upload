@@ -24,9 +24,9 @@ const FileListPanel: React.FC = () => {
   // 使用自定义 Hook 计算表格高度
   const tableHeight = useTableHeight();
 
-  // 按照创建时间排序，最新的在前面
+  // 按照创建时间排序，最早的在前面
   const sortedFiles = React.useMemo(() => {
-    return [...uploadFiles].sort((a, b) => b.createdAt - a.createdAt);
+    return [...uploadFiles].sort((a, b) => a.createdAt - b.createdAt);
   }, [uploadFiles]);
 
   // 检查是否有正在上传的文件
