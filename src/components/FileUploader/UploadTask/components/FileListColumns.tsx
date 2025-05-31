@@ -8,7 +8,6 @@ import {
 } from "@ant-design/icons";
 
 import { ByteConvert } from "../services/utils";
-import FilePreview from "./FilePreview";
 import type { SortOrder } from "antd/es/table/interface";
 import { StatusTagWithTooltip } from "./StatusTag";
 import type { UploadFile } from "../store/uploadStore";
@@ -35,13 +34,6 @@ export const createFileListColumns = (handlers: {
   } = handlers;
 
   return [
-    {
-      title: "预览",
-      key: "preview",
-      dataIndex: "file",
-      width: "8%",
-      render: (file: File) => <FilePreview file={file} />,
-    },
     {
       title: "序号",
       key: "index",

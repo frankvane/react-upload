@@ -9,10 +9,10 @@ import { useEffect, useState } from "react";
  * @returns 计算得到的表格高度
  */
 export const useTableHeight = (
-  topAreaHeight = 120,
-  bottomAreaHeight = 20,
+  topAreaHeight = 240,
+  bottomAreaHeight = 60,
   minHeight = 300,
-  maxHeightRatio = 0.7
+  maxHeightRatio = 0.5
 ): number => {
   const [tableHeight, setTableHeight] = useState(400); // 默认高度
 
