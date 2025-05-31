@@ -1,18 +1,7 @@
 import "./FileListPanel.css";
 
-import { Button, Progress, Space, Table, Tag, Tooltip } from "antd";
-import {
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-  DeleteOutlined,
-  LoadingOutlined,
-  PauseCircleOutlined,
-  PlayCircleOutlined,
-  ReloadOutlined,
-  SyncOutlined,
-  UploadOutlined,
-} from "@ant-design/icons";
-import React, { useCallback, useEffect, useState } from "react";
+import { Button, Space, Table } from "antd";
+import React, { useCallback } from "react";
 import {
   addFileToQueue,
   pauseFile,
@@ -20,115 +9,25 @@ import {
   retryUpload,
 } from "../services/uploadService";
 
-import { ByteConvert } from "../services/utils";
-import type { UploadFile } from "../store/uploadStore";
+import { ReloadOutlined } from "@ant-design/icons";
 import { UploadStatus } from "../types/upload";
+import { createFileListColumns } from "./FileListColumns";
+import { useTableHeight } from "../hooks/useTableHeight";
 import { useUploadStore } from "../store/uploadStore";
-
-// 根据上传状态获取状态标签
-const getStatusTag = (status: UploadStatus): JSX.Element => {
-  switch (status) {
-    case UploadStatus.QUEUED:
-      return (
-        <Tag color="default" icon={<PauseCircleOutlined />}>
-          排队中
-        </Tag>
-      );
-    case UploadStatus.QUEUED_FOR_UPLOAD:
-      return (
-        <Tag color="default" icon={<PauseCircleOutlined />}>
-          等待上传
-        </Tag>
-      );
-    case UploadStatus.CALCULATING:
-      return (
-        <Tag color="processing" icon={<SyncOutlined spin />}>
-          计算中
-        </Tag>
-      );
-    case UploadStatus.UPLOADING:
-      return (
-        <Tag color="processing" icon={<LoadingOutlined />}>
-          上传中
-        </Tag>
-      );
-    case UploadStatus.PAUSED:
-      return (
-        <Tag color="warning" icon={<PauseCircleOutlined />}>
-          已暂停
-        </Tag>
-      );
-    case UploadStatus.DONE:
-      return (
-        <Tag color="success" icon={<CheckCircleOutlined />}>
-          已完成
-        </Tag>
-      );
-    case UploadStatus.INSTANT:
-      return (
-        <Tag color="success" icon={<CheckCircleOutlined />}>
-          秒传
-        </Tag>
-      );
-    case UploadStatus.ERROR:
-      return (
-        <Tag color="error" icon={<CloseCircleOutlined />}>
-          失败
-        </Tag>
-      );
-    case UploadStatus.MERGE_ERROR:
-      return (
-        <Tag color="error" icon={<CloseCircleOutlined />}>
-          合并失败
-        </Tag>
-      );
-    default:
-      return <Tag color="default">未知</Tag>;
-  }
-};
 
 const FileListPanel: React.FC = () => {
   // 使用选择器函数分别获取状态和动作，避免不必要的重新渲染
   const uploadFiles = useUploadStore((state) => state.uploadFiles);
   const removeFile = useUploadStore((state) => state.removeFile);
   const clearCompleted = useUploadStore((state) => state.clearCompleted);
-  const [tableHeight, setTableHeight] = useState(400); // 默认高度
+
+  // 使用自定义 Hook 计算表格高度
+  const tableHeight = useTableHeight();
 
   // 按照创建时间排序，最新的在前面
   const sortedFiles = React.useMemo(() => {
     return [...uploadFiles].sort((a, b) => b.createdAt - a.createdAt);
   }, [uploadFiles]);
-
-  // 动态计算表格高度
-  useEffect(() => {
-    const calculateHeight = () => {
-      // 获取窗口高度
-      const windowHeight = window.innerHeight;
-      // 表格上方区域高度估计（标题、按钮等）
-      const topAreaHeight = 120;
-      // 表格下方区域高度估计
-      const bottomAreaHeight = 20;
-      // 可用高度
-      const availableHeight = windowHeight - topAreaHeight - bottomAreaHeight;
-      // 计算合适的表格高度，最小为300px，最大为窗口高度的70%
-      const optimalHeight = Math.min(
-        Math.max(300, availableHeight),
-        windowHeight * 0.7
-      );
-      setTableHeight(optimalHeight);
-    };
-
-    // 初始计算
-    calculateHeight();
-
-    // 窗口大小变化时重新计算
-    window.addEventListener("resize", calculateHeight);
-
-    // 清理函数
-    return () => {
-      window.removeEventListener("resize", calculateHeight);
-    };
-  }, []);
 
   // 检查是否有正在上传的文件
   const hasUploadingFiles = React.useMemo(() => {
@@ -183,138 +82,16 @@ const FileListPanel: React.FC = () => {
     resumeFile(fileId);
   }, []);
 
+  // 创建表格列配置
   const columns = React.useMemo(
-    () => [
-      {
-        title: "文件名",
-        dataIndex: "file",
-        key: "fileName",
-        render: (file: File) => file.name,
-        width: "30%",
-        ellipsis: true, // 文件名过长时显示省略号
-        onCell: () => ({
-          style: {
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          },
-        }),
-      },
-      {
-        title: "大小",
-        dataIndex: "file",
-        key: "fileSize",
-        render: (file: File) => ByteConvert(file.size),
-        width: "15%",
-      },
-      {
-        title: "状态",
-        dataIndex: "status",
-        key: "status",
-        render: (status: UploadStatus, record: UploadFile) => (
-          <Tooltip title={record.errorMessage}>{getStatusTag(status)}</Tooltip>
-        ),
-        width: "15%",
-      },
-      {
-        title: "进度",
-        key: "progress",
-        render: (_: unknown, record: UploadFile) => {
-          if (
-            record.status === UploadStatus.DONE ||
-            record.status === UploadStatus.INSTANT
-          ) {
-            return <Progress percent={100} size="small" status="success" />;
-          }
-          if (
-            record.status === UploadStatus.ERROR ||
-            record.status === UploadStatus.MERGE_ERROR
-          ) {
-            return (
-              <Progress
-                percent={record.progress}
-                size="small"
-                status="exception"
-              />
-            );
-          }
-          if (record.status === UploadStatus.CALCULATING) {
-            return (
-              <Tooltip title={`MD5计算进度: ${record.progress}%`}>
-                <Progress
-                  percent={record.progress}
-                  size="small"
-                  strokeColor="#1890ff"
-                  trailColor="#e6f7ff"
-                  status="active"
-                />
-              </Tooltip>
-            );
-          }
-          return <Progress percent={record.progress} size="small" />;
-        },
-        width: "20%",
-      },
-      {
-        title: "操作",
-        key: "action",
-        render: (_: unknown, record: UploadFile) => (
-          <Space size="middle">
-            {record.status === UploadStatus.QUEUED_FOR_UPLOAD && (
-              <Button
-                type="link"
-                icon={<UploadOutlined />}
-                onClick={() => handleUploadFile(record.id)}
-                size="small"
-              >
-                上传
-              </Button>
-            )}
-            {record.status === UploadStatus.UPLOADING && (
-              <Button
-                type="link"
-                icon={<PauseCircleOutlined />}
-                onClick={() => handlePauseFile(record.id)}
-                size="small"
-              >
-                暂停
-              </Button>
-            )}
-            {record.status === UploadStatus.PAUSED && (
-              <Button
-                type="link"
-                icon={<PlayCircleOutlined />}
-                onClick={() => handleResumeFile(record.id)}
-                size="small"
-              >
-                继续
-              </Button>
-            )}
-            {(record.status === UploadStatus.ERROR ||
-              record.status === UploadStatus.MERGE_ERROR) && (
-              <Button
-                type="link"
-                icon={<ReloadOutlined />}
-                onClick={() => handleRetry(record.id)}
-                size="small"
-              >
-                重试
-              </Button>
-            )}
-            <Button
-              type="link"
-              danger
-              icon={<DeleteOutlined />}
-              onClick={() => handleRemove(record.id)}
-              size="small"
-            >
-              删除
-            </Button>
-          </Space>
-        ),
-        width: "20%",
-      },
-    ],
+    () =>
+      createFileListColumns({
+        handleRetry,
+        handleRemove,
+        handleUploadFile,
+        handlePauseFile,
+        handleResumeFile,
+      }),
     [
       handleRetry,
       handleRemove,
