@@ -91,3 +91,17 @@ export async function getAllFileMeta(): Promise<UploadFileMeta[]> {
     return [];
   }
 }
+
+// 统计所有文件 buffer 的总字节数
+export async function getTotalCacheSize(): Promise<number> {
+  try {
+    let total = 0;
+    await store.iterate<UploadFileMeta, void>((value) => {
+      total += value.buffer?.byteLength || 0;
+    });
+    return total;
+  } catch (error) {
+    console.error("dbService: error calculating total cache size", error);
+    return 0;
+  }
+}

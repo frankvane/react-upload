@@ -1,5 +1,7 @@
 import "./FileListPanel.css";
 
+import * as dbService from "../services/dbService";
+
 import type {
   FilterValue,
   SortOrder,
@@ -236,6 +238,16 @@ const FileListPanel: React.FC = () => {
     }
   }, [sortedFiles]);
 
+  // 缓存空间占用显示
+  const [cacheSize, setCacheSize] = React.useState<number>(0);
+  useEffect(() => {
+    const fetchCacheSize = async () => {
+      const size = await dbService.getTotalCacheSize();
+      setCacheSize(size);
+    };
+    fetchCacheSize();
+  }, [uploadFiles]);
+
   return (
     <div style={{ marginTop: "20px" }}>
       <div
@@ -247,6 +259,9 @@ const FileListPanel: React.FC = () => {
         }}
       >
         <h3 style={{ margin: 0 }}>上传列表 ({sortedFiles.length})</h3>
+        <span style={{ color: "#888", fontSize: 13, marginLeft: 16 }}>
+          本地缓存占用：{(cacheSize / (1024 * 1024)).toFixed(2)} MB
+        </span>
         <FileListToolbar
           hasWaitingFiles={hasWaitingFiles}
           hasUploadingFiles={hasUploadingFiles}
