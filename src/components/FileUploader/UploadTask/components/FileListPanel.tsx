@@ -7,7 +7,7 @@ import type {
   TableCurrentDataSource,
   TablePaginationConfig,
 } from "antd/es/table/interface";
-import React, { useCallback } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import {
   addFileToQueue,
   pauseFile,
@@ -21,6 +21,7 @@ import { Table } from "antd";
 import type { UploadFile } from "../store/uploadStore";
 import { UploadStatus } from "../types/upload";
 import { createFileListColumns } from "./FileListColumns";
+import { notification } from "antd";
 import { useSortedUploadFiles } from "../hooks/useSortedUploadFiles";
 import { useTableHeight } from "../hooks/useTableHeight";
 import { useUploadFileStatus } from "../hooks/useUploadFileStatus";
@@ -41,6 +42,49 @@ const FileListPanel: React.FC = () => {
   // 使用自定义 Hook 获取文件状态
   const { hasUploadingFiles, hasCompletedFiles, hasWaitingFiles, failedFiles } =
     useUploadFileStatus(sortedFiles);
+
+  // 批量上传结果汇总通知
+  const prevUploadCountRef = useRef<number>(0);
+  const notifiedRef = useRef<boolean>(false);
+  useEffect(() => {
+    const total = sortedFiles.length;
+    const finished = sortedFiles.filter(
+      (f) =>
+        f.status === UploadStatus.DONE ||
+        f.status === UploadStatus.INSTANT ||
+        f.status === UploadStatus.ERROR ||
+        f.status === UploadStatus.MERGE_ERROR
+    ).length;
+
+    if (
+      total > 0 &&
+      finished === total &&
+      !notifiedRef.current &&
+      total !== prevUploadCountRef.current
+    ) {
+      const successCount = sortedFiles.filter(
+        (f) =>
+          f.status === UploadStatus.DONE || f.status === UploadStatus.INSTANT
+      ).length;
+      const failCount = sortedFiles.filter(
+        (f) =>
+          f.status === UploadStatus.ERROR ||
+          f.status === UploadStatus.MERGE_ERROR
+      ).length;
+
+      notification.info({
+        message: "批量上传完成",
+        description: `成功：${successCount}，失败：${failCount}`,
+        duration: 4,
+      });
+
+      notifiedRef.current = true;
+      prevUploadCountRef.current = total;
+    }
+    if (finished < total) {
+      notifiedRef.current = false;
+    }
+  }, [sortedFiles]);
 
   // 处理表格排序变化
   const handleTableChange = (
