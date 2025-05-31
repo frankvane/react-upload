@@ -8,7 +8,7 @@ import type {
   TableCurrentDataSource,
   TablePaginationConfig,
 } from "antd/es/table/interface";
-import React, { useCallback, useState } from "react";
+import React, { useCallback } from "react";
 import {
   addFileToQueue,
   pauseFile,
@@ -21,7 +21,9 @@ import { ReloadOutlined } from "@ant-design/icons";
 import type { UploadFile } from "../store/uploadStore";
 import { UploadStatus } from "../types/upload";
 import { createFileListColumns } from "./FileListColumns";
+import { useSortedUploadFiles } from "../hooks/useSortedUploadFiles";
 import { useTableHeight } from "../hooks/useTableHeight";
+import { useUploadFileStatus } from "../hooks/useUploadFileStatus";
 import { useUploadStore } from "../store/uploadStore";
 
 const FileListPanel: React.FC = () => {
@@ -33,61 +35,12 @@ const FileListPanel: React.FC = () => {
   // 使用自定义 Hook 计算表格高度
   const tableHeight = useTableHeight();
 
-  // 添加排序状态
-  const [sortState, setSortState] = useState<{
-    order: "ascend" | "descend" | undefined;
-    columnKey: React.Key | undefined;
-  }>({
-    order: "ascend",
-    columnKey: "lastModified",
-  });
+  // 使用自定义 Hook 管理排序和排序状态
+  const { sortedFiles, setSortState } = useSortedUploadFiles(uploadFiles);
 
-  // 根据排序状态对文件进行排序
-  const sortedFiles = React.useMemo(() => {
-    const files = [...uploadFiles];
-
-    // 默认按修改时间升序排列（最早的在前面）
-    if (!sortState.columnKey || sortState.columnKey === "lastModified") {
-      return files.sort((a, b) => {
-        const result = a.file.lastModified - b.file.lastModified;
-        return sortState.order === "ascend" ? result : -result;
-      });
-    }
-
-    // 按文件名排序
-    if (sortState.columnKey === "fileName") {
-      return files.sort((a, b) => {
-        const result = a.file.name.localeCompare(b.file.name);
-        return sortState.order === "ascend" ? result : -result;
-      });
-    }
-
-    // 按文件大小排序
-    if (sortState.columnKey === "fileSize") {
-      return files.sort((a, b) => {
-        const result = a.file.size - b.file.size;
-        return sortState.order === "ascend" ? result : -result;
-      });
-    }
-
-    // 按状态排序
-    if (sortState.columnKey === "status") {
-      return files.sort((a, b) => {
-        const result = a.status.localeCompare(b.status);
-        return sortState.order === "ascend" ? result : -result;
-      });
-    }
-
-    // 按进度排序
-    if (sortState.columnKey === "progress") {
-      return files.sort((a, b) => {
-        const result = a.progress - b.progress;
-        return sortState.order === "ascend" ? result : -result;
-      });
-    }
-
-    return files;
-  }, [uploadFiles, sortState]);
+  // 使用自定义 Hook 获取文件状态
+  const { hasUploadingFiles, hasCompletedFiles, hasWaitingFiles, failedFiles } =
+    useUploadFileStatus(sortedFiles);
 
   // 处理表格排序变化
   const handleTableChange = (
@@ -106,25 +59,6 @@ const FileListPanel: React.FC = () => {
       columnKey: sorterResult.columnKey,
     });
   };
-
-  // 检查是否有正在上传的文件
-  const hasUploadingFiles = React.useMemo(() => {
-    return uploadFiles.some(
-      (file) =>
-        file.status === UploadStatus.QUEUED ||
-        file.status === UploadStatus.CALCULATING ||
-        file.status === UploadStatus.UPLOADING
-    );
-  }, [uploadFiles]);
-
-  // 检查是否有失败的文件
-  const failedFiles = React.useMemo(() => {
-    return uploadFiles.filter(
-      (file) =>
-        file.status === UploadStatus.ERROR ||
-        file.status === UploadStatus.MERGE_ERROR
-    );
-  }, [uploadFiles]);
 
   const handleRetry = useCallback(
     (fileId: string) => {
@@ -208,15 +142,6 @@ const FileListPanel: React.FC = () => {
     ]
   );
 
-  // 检查是否有已完成的文件
-  const hasCompletedFiles = React.useMemo(() => {
-    return sortedFiles.some(
-      (file) =>
-        file.status === UploadStatus.DONE ||
-        file.status === UploadStatus.INSTANT
-    );
-  }, [sortedFiles]);
-
   // 批量上传所有等待中的文件
   const handleUploadAll = useCallback(() => {
     // 按照当前表格顺序获取等待上传的文件
@@ -236,13 +161,6 @@ const FileListPanel: React.FC = () => {
     if (fileIds.length > 0) {
       uploadFilesInSequence(fileIds);
     }
-  }, [sortedFiles]);
-
-  // 检查是否有等待上传的文件
-  const hasWaitingFiles = React.useMemo(() => {
-    return sortedFiles.some(
-      (file) => file.status === UploadStatus.QUEUED_FOR_UPLOAD
-    );
   }, [sortedFiles]);
 
   return (
