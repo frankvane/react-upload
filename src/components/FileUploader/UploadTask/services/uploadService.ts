@@ -492,6 +492,22 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
         await mergeFileChunks(fileId, fileHash, fileName, fileSize, chunkCount);
         updateFileStatus(fileId, UploadStatus.DONE, 100);
         console.log(`[上传完成] 文件 ${fileName} 合并成功`);
+
+        // 清理 IndexedDB 中的文件元数据
+        try {
+          await dbService.removeFileMeta(fileHash);
+          console.log(
+            `[缓存清理] 文件 ${fileName} (哈希: ${fileHash.substring(
+              0,
+              8
+            )}...) 的元数据已从 IndexedDB 中移除`
+          );
+        } catch (cleanupError) {
+          console.warn(
+            `[缓存警告] 清理文件 ${fileName} 元数据失败:`,
+            cleanupError
+          );
+        }
       } catch (error: any) {
         console.error(`[上传错误] 合并文件 ${fileName} 失败:`, error);
         setErrorMessage(fileId, `合并失败: ${error.message}`);
@@ -566,6 +582,22 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
                     );
                     updateFileStatus(fileId, UploadStatus.DONE, 100);
                     console.log(`[上传完成] 文件 ${fileName} 上传和合并成功`);
+
+                    // 清理 IndexedDB 中的文件元数据
+                    try {
+                      await dbService.removeFileMeta(fileHash);
+                      console.log(
+                        `[缓存清理] 文件 ${fileName} (哈希: ${fileHash.substring(
+                          0,
+                          8
+                        )}...) 的元数据已从 IndexedDB 中移除`
+                      );
+                    } catch (cleanupError) {
+                      console.warn(
+                        `[缓存警告] 清理文件 ${fileName} 元数据失败:`,
+                        cleanupError
+                      );
+                    }
                   } catch (error: any) {
                     console.error(
                       `[上传错误] 合并文件 ${fileName} 失败:`,
