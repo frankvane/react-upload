@@ -124,13 +124,12 @@ export const createFileListColumns = (handlers: {
       width: "15%",
     },
     {
-      title: "创建时间",
-      key: "createdAt",
-      dataIndex: "createdAt",
+      title: "修改时间",
+      key: "lastModified",
+      dataIndex: "file",
       sorter: true,
       sortDirections: ["ascend", "descend"] as SortOrder[],
-      defaultSortOrder: "ascend" as SortOrder,
-      render: (createdAt: number) => new Date(createdAt).toLocaleString(),
+      render: (file: File) => new Date(file.lastModified).toLocaleString(),
       width: "15%",
     },
     {

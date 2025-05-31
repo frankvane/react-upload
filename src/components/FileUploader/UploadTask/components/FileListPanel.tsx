@@ -39,17 +39,17 @@ const FileListPanel: React.FC = () => {
     columnKey: React.Key | undefined;
   }>({
     order: "ascend",
-    columnKey: "createdAt",
+    columnKey: "lastModified",
   });
 
   // 根据排序状态对文件进行排序
   const sortedFiles = React.useMemo(() => {
     const files = [...uploadFiles];
 
-    // 默认按创建时间升序排列（最早的在前面）
-    if (!sortState.columnKey || sortState.columnKey === "createdAt") {
+    // 默认按修改时间升序排列（最早的在前面）
+    if (!sortState.columnKey || sortState.columnKey === "lastModified") {
       return files.sort((a, b) => {
-        const result = a.createdAt - b.createdAt;
+        const result = a.file.lastModified - b.file.lastModified;
         return sortState.order === "ascend" ? result : -result;
       });
     }
