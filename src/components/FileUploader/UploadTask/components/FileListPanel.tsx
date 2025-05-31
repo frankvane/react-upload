@@ -1,3 +1,5 @@
+import "./FileListPanel.css";
+
 import { Button, Progress, Space, Table, Tag, Tooltip } from "antd";
 import {
   CheckCircleOutlined,
@@ -10,7 +12,7 @@ import {
   SyncOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
-import React, { useCallback } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   addFileToQueue,
   pauseFile,
@@ -18,18 +20,10 @@ import {
   retryUpload,
 } from "../services/uploadService";
 
+import { ByteConvert } from "../services/utils";
 import type { UploadFile } from "../store/uploadStore";
 import { UploadStatus } from "../types/upload";
 import { useUploadStore } from "../store/uploadStore";
-
-// 格式化文件大小
-const formatFileSize = (bytes: number): string => {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB", "TB", "PB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
-};
 
 // 根据上传状态获取状态标签
 const getStatusTag = (status: UploadStatus): JSX.Element => {
@@ -98,11 +92,43 @@ const FileListPanel: React.FC = () => {
   const uploadFiles = useUploadStore((state) => state.uploadFiles);
   const removeFile = useUploadStore((state) => state.removeFile);
   const clearCompleted = useUploadStore((state) => state.clearCompleted);
+  const [tableHeight, setTableHeight] = useState(400); // 默认高度
 
   // 按照创建时间排序，最新的在前面
   const sortedFiles = React.useMemo(() => {
     return [...uploadFiles].sort((a, b) => b.createdAt - a.createdAt);
   }, [uploadFiles]);
+
+  // 动态计算表格高度
+  useEffect(() => {
+    const calculateHeight = () => {
+      // 获取窗口高度
+      const windowHeight = window.innerHeight;
+      // 表格上方区域高度估计（标题、按钮等）
+      const topAreaHeight = 120;
+      // 表格下方区域高度估计
+      const bottomAreaHeight = 20;
+      // 可用高度
+      const availableHeight = windowHeight - topAreaHeight - bottomAreaHeight;
+      // 计算合适的表格高度，最小为300px，最大为窗口高度的70%
+      const optimalHeight = Math.min(
+        Math.max(300, availableHeight),
+        windowHeight * 0.7
+      );
+      setTableHeight(optimalHeight);
+    };
+
+    // 初始计算
+    calculateHeight();
+
+    // 窗口大小变化时重新计算
+    window.addEventListener("resize", calculateHeight);
+
+    // 清理函数
+    return () => {
+      window.removeEventListener("resize", calculateHeight);
+    };
+  }, []);
 
   // 检查是否有正在上传的文件
   const hasUploadingFiles = React.useMemo(() => {
@@ -165,12 +191,20 @@ const FileListPanel: React.FC = () => {
         key: "fileName",
         render: (file: File) => file.name,
         width: "30%",
+        ellipsis: true, // 文件名过长时显示省略号
+        onCell: () => ({
+          style: {
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          },
+        }),
       },
       {
         title: "大小",
         dataIndex: "file",
         key: "fileSize",
-        render: (file: File) => formatFileSize(file.size),
+        render: (file: File) => ByteConvert(file.size),
         width: "15%",
       },
       {
@@ -335,13 +369,21 @@ const FileListPanel: React.FC = () => {
         </Space>
       </div>
 
-      <Table
-        dataSource={sortedFiles}
-        columns={columns}
-        rowKey="id"
-        pagination={false}
-        size="middle"
-      />
+      <div className="file-list-table-container">
+        <Table
+          dataSource={sortedFiles}
+          columns={columns}
+          rowKey="id"
+          pagination={false}
+          size="middle"
+          scroll={{ y: tableHeight }}
+          virtual
+          rowClassName={(_, index) =>
+            index % 2 === 0 ? "table-row-light" : "table-row-dark"
+          }
+          className="virtual-table"
+        />
+      </div>
     </div>
   );
 };
