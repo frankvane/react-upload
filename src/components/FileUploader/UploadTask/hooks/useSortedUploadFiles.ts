@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 
-import type { SortOrder } from "antd/es/table/interface";
 import type { UploadFile } from "../store/uploadStore";
 
 export function useSortedUploadFiles(uploadFiles: UploadFile[]) {

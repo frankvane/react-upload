@@ -1,6 +1,5 @@
 import "./FileListPanel.css";
 
-import { Button, Space, Table } from "antd";
 import type {
   FilterValue,
   SortOrder,
@@ -17,7 +16,8 @@ import {
   uploadFilesInSequence,
 } from "../services/uploadService";
 
-import { ReloadOutlined } from "@ant-design/icons";
+import FileListToolbar from "./FileListToolbar";
+import { Table } from "antd";
 import type { UploadFile } from "../store/uploadStore";
 import { UploadStatus } from "../types/upload";
 import { createFileListColumns } from "./FileListColumns";
@@ -174,39 +174,15 @@ const FileListPanel: React.FC = () => {
         }}
       >
         <h3 style={{ margin: 0 }}>上传列表 ({sortedFiles.length})</h3>
-        <Space>
-          {hasWaitingFiles && (
-            <Button
-              type="primary"
-              onClick={handleUploadAll}
-              size="small"
-              disabled={hasUploadingFiles}
-            >
-              全部上传
-            </Button>
-          )}
-          {failedFiles.length > 0 && (
-            <Button
-              type="link"
-              icon={<ReloadOutlined />}
-              onClick={handleRetryAllFailed}
-              size="small"
-              disabled={hasUploadingFiles}
-            >
-              全部重试 ({failedFiles.length})
-            </Button>
-          )}
-          {hasCompletedFiles && (
-            <Button
-              type="link"
-              onClick={handleClearCompleted}
-              size="small"
-              disabled={hasUploadingFiles}
-            >
-              清除已完成
-            </Button>
-          )}
-        </Space>
+        <FileListToolbar
+          hasWaitingFiles={hasWaitingFiles}
+          hasUploadingFiles={hasUploadingFiles}
+          hasCompletedFiles={hasCompletedFiles}
+          failedFilesCount={failedFiles.length}
+          onUploadAll={handleUploadAll}
+          onRetryAllFailed={handleRetryAllFailed}
+          onClearCompleted={handleClearCompleted}
+        />
       </div>
 
       <div className="file-list-table-container">
