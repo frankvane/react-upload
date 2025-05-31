@@ -13,8 +13,13 @@ export const generateStableFileId = (file: File): string => {
 /**
  * 使用 Web Worker 将文件转换为 ArrayBuffer 并计算 MD5
  * 然后将结果存储到 IndexedDB 中
+ * @param file 要处理的文件
+ * @param chunkSize 分片大小（字节），基于网络状态动态计算
  */
-export const processFileWithWorker = (file: File): Promise<UploadFileMeta> => {
+export const processFileWithWorker = (
+  file: File,
+  chunkSize: number = 2 * 1024 * 1024
+): Promise<UploadFileMeta> => {
   return new Promise((resolve, reject) => {
     try {
       // 创建 Web Worker，不使用模块类型
@@ -34,7 +39,7 @@ export const processFileWithWorker = (file: File): Promise<UploadFileMeta> => {
           const meta: UploadFileMeta = {
             ...data,
             addedAt: Date.now(),
-            chunkSize: 2 * 1024 * 1024, // 默认分片大小 2MB
+            chunkSize: chunkSize, // 使用传入的网络自适应分片大小
           };
 
           try {
