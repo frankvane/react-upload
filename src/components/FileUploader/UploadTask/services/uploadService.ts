@@ -1020,18 +1020,3 @@ export function useAutoPauseQueueOnNetworkChange() {
     }
   }, [networkType]);
 }
-
-// 断网检测：断网时暂停队列，联网后自动恢复
-if (
-  typeof window !== "undefined" &&
-  typeof window.addEventListener === "function"
-) {
-  window.addEventListener("offline", () => {
-    console.warn("[网络状态] 检测到断网，自动暂停上传队列");
-    pauseQueue();
-  });
-  window.addEventListener("online", () => {
-    console.info("[网络状态] 网络已恢复，自动恢复上传队列");
-    resumeQueue();
-  });
-}
