@@ -41,17 +41,21 @@ export const calculateFileHashWithWorker = async (
   fileHash: string;
   chunkHashes: string[];
 }> => {
-  const { updateFileStatus } = useUploadStore.getState();
+  const { updateFileStatus, useIndexedDB } = useUploadStore.getState();
 
-  // 尝试从 IndexedDB 获取该文件的元数据，获取已保存的切片大小
+  // 设置默认分片大小
   let chunkSize = DEFAULT_CHUNK_SIZE; // 默认分片大小
-  try {
-    const fileMeta = await dbService.getFileMeta(fileId);
-    if (fileMeta && fileMeta.chunkSize) {
-      chunkSize = fileMeta.chunkSize;
+
+  // 只有当启用了IndexedDB时，才尝试从中获取数据
+  if (useIndexedDB) {
+    try {
+      const fileMeta = await dbService.getFileMeta(fileId);
+      if (fileMeta && fileMeta.chunkSize) {
+        chunkSize = fileMeta.chunkSize;
+      }
+    } catch {
+      // 无法获取元数据，使用默认切片大小
     }
-  } catch (_) {
-    // 无法获取元数据，使用默认切片大小
   }
 
   return new Promise((resolve, reject) => {
@@ -159,6 +163,12 @@ export const saveFileToIndexedDB = async (
   fileId: string,
   chunkSize: number
 ): Promise<boolean> => {
+  // 检查是否启用了IndexedDB存储
+  const { useIndexedDB } = useUploadStore.getState();
+  if (!useIndexedDB) {
+    return false; // 如果禁用了IndexedDB，则直接返回false
+  }
+
   try {
     // 先计算文件的 MD5 哈希
     const { fileHash } = await calculateFileHashWithWorker(fileId, file);
@@ -192,7 +202,7 @@ export const saveFileToIndexedDB = async (
 
       reader.readAsArrayBuffer(file);
     });
-  } catch (_) {
+  } catch {
     // 保存失败
     return false;
   }
@@ -202,6 +212,12 @@ export const saveFileToIndexedDB = async (
 export const getFileFromIndexedDB = async (
   fileId: string
 ): Promise<UploadFileMeta | null> => {
+  // 检查是否启用了IndexedDB存储
+  const { useIndexedDB } = useUploadStore.getState();
+  if (!useIndexedDB) {
+    return null; // 如果禁用了IndexedDB，则直接返回null
+  }
+
   return dbService.getFileMeta(fileId);
 };
 
@@ -229,7 +245,7 @@ export const checkInstantUpload = async (
       },
       { apiPrefix: API_PREFIX }
     );
-  } catch (error) {
+  } catch {
     return {
       uploaded: false,
       chunkCheckResult: Array(chunkCount)
@@ -307,7 +323,7 @@ export const uploadFileChunkWithRetry = async (
     },
     {
       retries: 3,
-      onFailedAttempt: (error) => {},
+      onFailedAttempt: () => {},
     }
   );
 };
@@ -349,6 +365,7 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
     setErrorMessage,
     getFile,
     incrementUploadedChunks,
+    useIndexedDB,
   } = useUploadStore.getState();
 
   // 获取当前的上传文件信息
@@ -377,17 +394,18 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
       return;
     }
 
-    // 保存文件到 IndexedDB
     let savedChunkSize: number | undefined;
 
     // 检查是否已经保存到 IndexedDB
-    try {
-      const existingData = await dbService.getFileMeta(fileId);
-      if (existingData) {
-        savedChunkSize = existingData.chunkSize;
+    if (useIndexedDB) {
+      try {
+        const existingData = await dbService.getFileMeta(fileId);
+        if (existingData) {
+          savedChunkSize = existingData.chunkSize;
+        }
+      } catch {
+        // 无法获取元数据，继续使用默认值
       }
-    } catch {
-      // 无法获取元数据，继续使用默认值
     }
 
     // 使用 Worker 计算文件哈希和分片哈希
@@ -425,10 +443,12 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
       updateFileStatus(fileId, UploadStatus.INSTANT, 100);
 
       // 秒传成功后，从IndexedDB中删除记录
-      try {
-        await dbService.removeFileMeta(fileHash);
-      } catch {
-        // 清理失败，但不影响上传流程
+      if (useIndexedDB) {
+        try {
+          await dbService.removeFileMeta(fileHash);
+        } catch {
+          // 清理失败，但不影响上传流程
+        }
       }
 
       return;
@@ -461,10 +481,12 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
         updateFileStatus(fileId, UploadStatus.DONE, 100);
 
         // 清理 IndexedDB 中的文件元数据
-        try {
-          await dbService.removeFileMeta(fileHash);
-        } catch {
-          // 清理失败，但不影响上传流程
+        if (useIndexedDB) {
+          try {
+            await dbService.removeFileMeta(fileHash);
+          } catch {
+            // 清理失败，但不影响上传流程
+          }
         }
       } catch (err) {
         setErrorMessage(
@@ -528,10 +550,12 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
                     updateFileStatus(fileId, UploadStatus.DONE, 100);
 
                     // 清理 IndexedDB 中的文件元数据
-                    try {
-                      await dbService.removeFileMeta(fileHash);
-                    } catch {
-                      // 清理失败，但不影响上传流程
+                    if (useIndexedDB) {
+                      try {
+                        await dbService.removeFileMeta(fileHash);
+                      } catch {
+                        // 清理失败，但不影响上传流程
+                      }
                     }
                   } catch (err) {
                     setErrorMessage(
@@ -637,18 +661,18 @@ export const addFileToQueue = (
     .add(
       async () => {
         try {
-          await processFileUpload(fileId).catch((err) => {
+          await processFileUpload(fileId).catch(() => {
             // 确保即使有错误也能继续处理队列
             return Promise.resolve();
           });
-        } catch (err) {
+        } catch {
           // 确保即使有未捕获的错误也能继续处理队列
           return Promise.resolve();
         }
       },
       { priority: priority } // 添加优先级配置
     )
-    .catch((queueErr) => {});
+    .catch(() => {});
 };
 
 // 重试上传
@@ -762,10 +786,16 @@ export const getQueueStats = () => {
 
 // 清除所有上传记录和缓存
 export const clearAllUploads = async (): Promise<boolean> => {
+  // 检查是否启用了IndexedDB存储
+  const { useIndexedDB } = useUploadStore.getState();
+  if (!useIndexedDB) {
+    return true; // 如果禁用了IndexedDB，则直接返回true
+  }
+
   try {
     await dbService.clearAllFileMeta();
     return true;
-  } catch (_) {
+  } catch {
     return false;
   }
 };

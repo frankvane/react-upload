@@ -30,6 +30,8 @@ export interface UploadFile {
 // 定义整个上传队列的状态结构
 interface UploadState {
   uploadFiles: UploadFile[]; // 待上传文件列表
+  useIndexedDB: boolean; // 是否使用IndexedDB存储文件
+  setUseIndexedDB: (value: boolean) => void; // 设置是否使用IndexedDB存储
   addFile: (file: File, md5?: string) => string; // 添加文件到队列，返回文件ID
   updateFileStatus: (
     id: string,
@@ -53,6 +55,12 @@ export const useUploadStore = create<UploadState>()(
   devtools(
     (set) => ({
       uploadFiles: [],
+      useIndexedDB: true, // 默认启用IndexedDB存储
+
+      // 设置是否使用IndexedDB存储
+      setUseIndexedDB: (value: boolean) => {
+        set({ useIndexedDB: value }, false, { type: "setUseIndexedDB", value });
+      },
 
       // 获取文件对象的方法
       getFile: (id: string) => {
@@ -295,6 +303,12 @@ export const useUploadStore = create<UploadState>()(
       // 从 IndexedDB 初始化文件列表
       initializeFromIndexedDB: async () => {
         try {
+          // 检查是否启用了IndexedDB
+          const { useIndexedDB } = useUploadStore.getState();
+          if (!useIndexedDB) {
+            return; // 如果禁用了IndexedDB，则直接返回
+          }
+
           // 获取所有存储在 IndexedDB 中的文件元数据
           const fileMetas = await dbService.getAllFileMeta();
 

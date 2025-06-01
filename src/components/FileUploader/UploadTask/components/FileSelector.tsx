@@ -1,5 +1,5 @@
 import { Alert, Button, Progress, Upload } from "antd";
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 
 import { UploadOutlined } from "@ant-design/icons";
 import type { UploadProps } from "antd";
@@ -39,13 +39,13 @@ const FileSelector: React.FC<FileSelectorProps> = ({
   } | null>(null);
 
   // 使用网络状态 hook 获取当前网络状态和推荐的上传参数
-  const { networkType, chunkSize, fileConcurrency, chunkConcurrency } =
-    useNetworkType();
+  const { networkType, chunkSize, fileConcurrency } = useNetworkType();
 
   // 是否处于离线状态
   const isOffline = networkType === "offline";
 
   const addFile = useUploadStore((state) => state.addFile);
+  const useIndexedDB = useUploadStore((state) => state.useIndexedDB);
 
   const handleFileSelect = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -112,8 +112,12 @@ const FileSelector: React.FC<FileSelectorProps> = ({
       const processPromises = validFiles.map(async (file, index) => {
         try {
           // 先使用 Web Worker 处理文件并计算 MD5
-          // 使用当前网络状态推荐的切片大小
-          const meta = await processFileWithWorker(file, chunkSize);
+          // 使用当前网络状态推荐的切片大小，并传递IndexedDB设置
+          const meta = await processFileWithWorker(
+            file,
+            chunkSize,
+            useIndexedDB
+          );
 
           // 使用 MD5 作为文件 ID 添加到 store
           const fileId = addFile(file, meta.key);

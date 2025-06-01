@@ -18,7 +18,8 @@ export const generateStableFileId = (file: File): string => {
  */
 export const processFileWithWorker = (
   file: File,
-  chunkSize: number = 2 * 1024 * 1024
+  chunkSize: number = 2 * 1024 * 1024,
+  saveToIndexedDB: boolean = true
 ): Promise<UploadFileMeta> => {
   return new Promise((resolve, reject) => {
     try {
@@ -42,13 +43,18 @@ export const processFileWithWorker = (
             chunkSize: chunkSize, // 使用传入的网络自适应分片大小
           };
 
-          try {
-            // 保存到 IndexedDB，使用 MD5 作为 key
-            await dbService.saveFileMeta(meta);
-            resolve(meta);
-          } catch (saveError) {
-            reject(new Error(`保存到 IndexedDB 失败: ${saveError}`));
+          // 只有当启用了IndexedDB存储时，才保存到数据库
+          if (saveToIndexedDB) {
+            try {
+              // 保存到 IndexedDB，使用 MD5 作为 key
+              await dbService.saveFileMeta(meta);
+            } catch (saveError) {
+              console.warn(`保存到 IndexedDB 失败: ${saveError}`);
+              // 即使保存失败，仍然返回处理后的元数据
+            }
           }
+
+          resolve(meta);
         } else {
           reject(new Error(error || "文件处理失败"));
         }
