@@ -25,6 +25,7 @@ export interface UploadFile {
   pausedChunks?: number[]; // 暂停时已上传的分片索引
   errorMessage?: string; // 错误信息
   createdAt: number; // 创建时间戳
+  order: number; // 上传顺序
 }
 
 // 定义整个上传队列的状态结构
@@ -71,26 +72,24 @@ export const useUploadStore = create<UploadState>()(
         // 使用 MD5 作为文件 ID，如果没有提供则使用稳定的文件 ID 生成方式
         const fileId = md5 || generateStableFileId(file);
 
-        // 检查文件是否已经在队列中
         set(
           (state) => {
-            // 如果文件已经在队列中，则不重复添加
+            // 检查文件是否已经在队列中
             const existingFile = state.uploadFiles.find(
               (uploadFile) => uploadFile.id === fileId
             );
 
+            let newUploadFiles: UploadFile[];
             if (existingFile) {
               // 如果文件已经在队列中，并且状态是已完成或秒传，则不做任何操作
               if (
                 existingFile.status === UploadStatus.DONE ||
                 existingFile.status === UploadStatus.INSTANT
               ) {
-                return { uploadFiles: state.uploadFiles };
-              }
-
-              // 如果文件已经在队列中，但状态不是已完成或秒传，则重置其状态
-              return {
-                uploadFiles: state.uploadFiles.map((uploadFile) =>
+                newUploadFiles = state.uploadFiles;
+              } else {
+                // 如果文件已经在队列中，但状态不是已完成或秒传，则重置其状态
+                newUploadFiles = state.uploadFiles.map((uploadFile) =>
                   uploadFile.id === fileId
                     ? {
                         ...uploadFile,
@@ -102,16 +101,13 @@ export const useUploadStore = create<UploadState>()(
                         createdAt: Date.now(),
                       }
                     : uploadFile
-                ),
-              };
-            }
-
-            // 将文件保存到映射表中，但不直接保存到状态中
-            fileMap.set(fileId, file);
-
-            // 如果文件不在队列中，则添加到队列（只存储必要的文件信息，减少内存占用）
-            return {
-              uploadFiles: [
+                );
+              }
+            } else {
+              // 将文件保存到映射表中，但不直接保存到状态中
+              fileMap.set(fileId, file);
+              // 如果文件不在队列中，则添加到队列（只存储必要的文件信息，减少内存占用）
+              newUploadFiles = [
                 ...state.uploadFiles,
                 {
                   id: fileId,
@@ -124,8 +120,18 @@ export const useUploadStore = create<UploadState>()(
                   hash: md5, // 如果提供了 MD5，则设置哈希值
                   pausedChunks: [],
                   createdAt: Date.now(),
+                  order: 0, // 先占位，后面统一分配
                 },
-              ],
+              ];
+            }
+
+            // 统一为所有文件分配order，保证顺序唯一且递增
+            newUploadFiles = newUploadFiles
+              .map((file, idx) => ({ ...file, order: idx }))
+              .sort((a, b) => a.order - b.order);
+
+            return {
+              uploadFiles: newUploadFiles,
             };
           },
           false,
@@ -241,11 +247,19 @@ export const useUploadStore = create<UploadState>()(
         fileMap.delete(id);
 
         set(
-          (state) => ({
-            uploadFiles: state.uploadFiles.filter(
+          (state) => {
+            const filtered = state.uploadFiles.filter(
               (uploadFile) => uploadFile.id !== id
-            ),
-          }),
+            );
+            // 自动重排order
+            const reordered = filtered.map((file, idx) => ({
+              ...file,
+              order: idx,
+            }));
+            return {
+              uploadFiles: reordered,
+            };
+          },
           false,
           { type: "removeFile", id }
         );
@@ -266,12 +280,18 @@ export const useUploadStore = create<UploadState>()(
             // 从fileMap中移除这些文件
             completedIds.forEach((id) => fileMap.delete(id));
 
+            const filtered = state.uploadFiles.filter(
+              (uploadFile) =>
+                uploadFile.status !== UploadStatus.DONE &&
+                uploadFile.status !== UploadStatus.INSTANT
+            );
+            // 自动重排order
+            const reordered = filtered.map((file, idx) => ({
+              ...file,
+              order: idx,
+            }));
             return {
-              uploadFiles: state.uploadFiles.filter(
-                (uploadFile) =>
-                  uploadFile.status !== UploadStatus.DONE &&
-                  uploadFile.status !== UploadStatus.INSTANT
-              ),
+              uploadFiles: reordered,
             };
           },
           false,
@@ -281,8 +301,8 @@ export const useUploadStore = create<UploadState>()(
 
       resetFile: (id) => {
         set(
-          (state) => ({
-            uploadFiles: state.uploadFiles.map((uploadFile) =>
+          (state) => {
+            const updated = state.uploadFiles.map((uploadFile) =>
               uploadFile.id === id
                 ? {
                     ...uploadFile,
@@ -293,8 +313,16 @@ export const useUploadStore = create<UploadState>()(
                     errorMessage: undefined,
                   }
                 : uploadFile
-            ),
-          }),
+            );
+            // 自动重排order
+            const reordered = updated.map((file, idx) => ({
+              ...file,
+              order: idx,
+            }));
+            return {
+              uploadFiles: reordered,
+            };
+          },
           false,
           { type: "resetFile", id }
         );
@@ -340,18 +368,22 @@ export const useUploadStore = create<UploadState>()(
               uploadedChunks: 0,
               pausedChunks: [],
               createdAt: meta.addedAt,
+              order: 0, // 先占位，后面统一分配
             };
           });
+
+          // 自动重排order
+          const reordered = files.map((file, idx) => ({ ...file, order: idx }));
 
           // 更新 store 中的文件列表
           set(
             (state) => ({
               uploadFiles: [
                 ...state.uploadFiles,
-                ...files.filter(
+                ...reordered.filter(
                   (file) => !state.uploadFiles.some((f) => f.id === file.id)
                 ),
-              ],
+              ].map((file, idx) => ({ ...file, order: idx })), // 再次全局重排order
             }),
             false,
             { type: "initializeFromIndexedDB", filesCount: files.length }
