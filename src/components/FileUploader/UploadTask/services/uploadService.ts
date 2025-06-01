@@ -650,7 +650,6 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
   } catch (err) {
     setErrorMessage(fileId, err instanceof Error ? err.message : String(err));
     updateFileStatus(fileId, UploadStatus.ERROR, 0);
-
     // 清除中断控制器
     delete fileAbortControllers[fileId];
   }
@@ -691,9 +690,11 @@ export const addFileToQueue = (
   // 如果文件已经在队列中或已完成，则不再添加
   if (
     file.status === UploadStatus.DONE ||
-    file.status === UploadStatus.INSTANT
+    file.status === UploadStatus.INSTANT ||
+    file.status === UploadStatus.ERROR ||
+    file.status === UploadStatus.MERGE_ERROR
   ) {
-    console.log(`[DEBUG] 文件 ${fileId} 状态已完成，不再添加到队列`);
+    console.log(`[DEBUG] 文件 ${fileId} 状态已完成/错误，不再添加到队列`);
     return;
   }
 

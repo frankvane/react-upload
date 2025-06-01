@@ -427,6 +427,7 @@ const FileListPanel: React.FC = () => {
           onRetryAllFailed={handleRetryAllFailed}
           onClearCompleted={handleClearCompleted}
           onJumpToFirstPage={jumpToFirstPage}
+          sortedFiles={sortedFiles}
         />
       </div>
       {resumeInfo && (

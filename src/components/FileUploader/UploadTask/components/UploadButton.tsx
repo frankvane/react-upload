@@ -21,6 +21,7 @@ import {
   updateQueueConcurrency,
 } from "../services/uploadService";
 
+import type { UploadFile } from "../store/uploadStore";
 import { UploadStatus } from "../types/upload";
 import { useNetworkType } from "../hooks/useNetworkType";
 import { useUploadStore } from "../store/uploadStore";
@@ -35,6 +36,7 @@ interface UploadButtonProps {
   onRetryAllFailed?: () => void;
   onClearCompleted?: () => void;
   onJumpToFirstPage?: () => void;
+  sortedFiles: UploadFile[];
 }
 
 const UploadButton: React.FC<UploadButtonProps> = ({
@@ -46,6 +48,7 @@ const UploadButton: React.FC<UploadButtonProps> = ({
   onRetryAllFailed,
   onClearCompleted,
   onJumpToFirstPage,
+  sortedFiles,
 }) => {
   // 上传状态管理
   const [queuePaused, setQueuePaused] = useState<boolean>(false);
@@ -168,14 +171,15 @@ const UploadButton: React.FC<UploadButtonProps> = ({
       return;
     }
 
-    // 收集所有未完成（未DONE/INSTANT/ERROR/MERGE_ERROR）文件ID
-    const unfinishedFiles = uploadFiles.filter(
+    // 按当前UI排序顺序恢复上传
+    const unfinishedFiles = sortedFiles.filter(
       (file) =>
         file.status !== UploadStatus.DONE &&
         file.status !== UploadStatus.INSTANT &&
         file.status !== UploadStatus.ERROR &&
         file.status !== UploadStatus.MERGE_ERROR
     );
+
     if (unfinishedFiles.length === 0) {
       message.warning("没有暂停的文件需要恢复");
       return;
@@ -184,18 +188,17 @@ const UploadButton: React.FC<UploadButtonProps> = ({
     message.info(`正在恢复上传队列 (并发数: ${fileConcurrency})...`);
     await resumeQueue(fileConcurrency);
 
-    // 顺序调度所有未完成文件
+    // 顺序调度所有未完成文件，priority从大到小，保证第一个文件优先
     for (let i = 0; i < unfinishedFiles.length; i++) {
       const fileId = unfinishedFiles[i].id;
       resetFile(fileId);
-      addFileToQueue(fileId, fileConcurrency);
+      addFileToQueue(fileId, unfinishedFiles.length - i, fileConcurrency);
       if (i < unfinishedFiles.length - 1) {
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
     }
     setQueuePaused(false);
     message.success(`已恢复上传队列 (并发数: ${fileConcurrency})`);
-    // 恢复后跳到第1页
     if (typeof onJumpToFirstPage === "function") {
       onJumpToFirstPage();
     }
