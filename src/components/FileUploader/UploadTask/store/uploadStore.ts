@@ -55,7 +55,7 @@ export const useUploadStore = create<UploadState>()(
   devtools(
     (set) => ({
       uploadFiles: [],
-      useIndexedDB: true, // 默认启用IndexedDB存储
+      useIndexedDB: false, // 默认禁用IndexedDB存储
 
       // 设置是否使用IndexedDB存储
       setUseIndexedDB: (value: boolean) => {

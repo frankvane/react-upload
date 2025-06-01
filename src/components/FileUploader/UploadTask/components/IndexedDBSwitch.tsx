@@ -17,7 +17,7 @@ interface IndexedDBSwitchProps {
  */
 const IndexedDBSwitch: React.FC<IndexedDBSwitchProps> = ({
   label = "启用离线存储",
-  tooltipTitle = "开启后可支持文件的离线存储和断点续传，刷新页面后保留上传状态",
+  tooltipTitle = "开启后可支持文件的离线存储和断点续传，刷新页面后保留上传状态（默认关闭）",
 }) => {
   const { useIndexedDB, setUseIndexedDB } = useUploadStore();
 

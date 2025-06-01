@@ -27,7 +27,7 @@ const UploadTask: React.FC<UploadTaskProps> = ({
   maxSize = 500,
   maxCount = 10,
   showMemoryUsage = true,
-  useIndexedDB = true, // 默认开启IndexedDB存储
+  useIndexedDB = false, // 默认禁用IndexedDB存储
 }) => {
   // 注册内存管理器，在内存不足时释放一些资源
   // memoryManager.register("upload", async () => {
