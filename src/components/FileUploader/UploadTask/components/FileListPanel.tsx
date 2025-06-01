@@ -18,13 +18,13 @@ import {
   uploadFilesInSequence,
   useAutoPauseQueueOnNetworkChange,
 } from "../services/uploadService";
+import { message, notification } from "antd";
 
 import { Table } from "antd";
 import UploadButton from "./UploadButton";
 import type { UploadFile } from "../store/uploadStore";
 import { UploadStatus } from "../types/upload";
 import { createFileListColumns } from "./FileListColumns";
-import { notification } from "antd";
 import { useSortedUploadFiles } from "../hooks/useSortedUploadFiles";
 import { useTableHeight } from "../hooks/useTableHeight";
 import { useUploadFileStatus } from "../hooks/useUploadFileStatus";
@@ -279,6 +279,36 @@ const FileListPanel: React.FC = () => {
     clearCompleted();
   }, [clearCompleted]);
 
+  // 批量上传所有等待中的文件
+  const handleUploadAll = useCallback(() => {
+    // 确保从第一页开始上传
+    setPagination((prev) => {
+      const newPagination = {
+        ...prev,
+        current: 1,
+      };
+      paginationRef.current = newPagination;
+      return newPagination;
+    });
+
+    // 获取所有等待上传的文件，不仅仅是第一页
+    const waitingFiles = sortedFiles.filter(
+      (file) => file.status === UploadStatus.QUEUED_FOR_UPLOAD
+    );
+
+    // 获取文件ID数组
+    const fileIds = waitingFiles.map((file) => file.id);
+
+    // 显示开始上传的信息
+    if (fileIds.length > 0) {
+      message.success(`开始上传 ${fileIds.length} 个文件`);
+      // 使用顺序上传功能
+      uploadFilesInSequence(fileIds);
+    } else {
+      message.warning("没有待上传的文件");
+    }
+  }, [sortedFiles]);
+
   // 重试所有失败的文件
   const handleRetryAllFailed = useCallback(() => {
     // 按照当前排序顺序重试失败的文件
@@ -291,9 +321,13 @@ const FileListPanel: React.FC = () => {
     // 获取文件ID数组
     const fileIds = failedFilesInOrder.map((file) => file.id);
 
-    // 使用顺序上传功能
+    // 显示开始重试的消息
     if (fileIds.length > 0) {
+      message.success(`开始重试 ${fileIds.length} 个失败的文件`);
+      // 使用顺序上传功能
       uploadFilesInSequence(fileIds);
+    } else {
+      message.warning("没有失败的文件需要重试");
     }
   }, [sortedFiles]);
 
@@ -330,36 +364,6 @@ const FileListPanel: React.FC = () => {
     ]
   );
 
-  // 批量上传所有等待中的文件
-  const handleUploadAll = useCallback(() => {
-    // 确保从第一页开始上传
-    setPagination((prev) => {
-      const newPagination = {
-        ...prev,
-        current: 1,
-      };
-      paginationRef.current = newPagination;
-      return newPagination;
-    });
-
-    // 获取第一页的文件
-    const pageSize = paginationRef.current.pageSize || 10;
-    const firstPageFiles = sortedFiles.slice(0, pageSize);
-
-    // 筛选出等待上传的文件
-    const waitingFiles = firstPageFiles.filter(
-      (file) => file.status === UploadStatus.QUEUED_FOR_UPLOAD
-    );
-
-    // 获取文件ID数组
-    const fileIds = waitingFiles.map((file) => file.id);
-
-    // 使用顺序上传功能
-    if (fileIds.length > 0) {
-      uploadFilesInSequence(fileIds);
-    }
-  }, [sortedFiles]);
-
   // 缓存空间占用显示
   const [cacheSize, setCacheSize] = React.useState<number>(0);
   useEffect(() => {
@@ -385,7 +389,6 @@ const FileListPanel: React.FC = () => {
           本地缓存占用：{(cacheSize / (1024 * 1024)).toFixed(2)} MB
         </span>
         <UploadButton
-          hasWaitingFiles={hasWaitingFiles}
           hasUploadingFiles={hasUploadingFiles}
           hasCompletedFiles={hasCompletedFiles}
           failedFilesCount={failedFiles.length}

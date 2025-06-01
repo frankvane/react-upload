@@ -29,7 +29,6 @@ import { useUploadStore } from "../store/uploadStore";
 // 合并FileListToolbar的属性
 interface UploadButtonProps {
   // FileListToolbar属性
-  hasWaitingFiles?: boolean;
   hasUploadingFiles?: boolean;
   hasCompletedFiles?: boolean;
   failedFilesCount?: number;
@@ -40,7 +39,6 @@ interface UploadButtonProps {
 
 const UploadButton: React.FC<UploadButtonProps> = ({
   // FileListToolbar属性，设置默认值
-  hasWaitingFiles = false,
   hasUploadingFiles = false,
   hasCompletedFiles = false,
   failedFilesCount = 0,
@@ -89,7 +87,7 @@ const UploadButton: React.FC<UploadButtonProps> = ({
       file.status === UploadStatus.MERGE_ERROR
   );
 
-  // 处理上传按钮点击
+  // 处理上传按钮点击 - 合并上传文件和全部上传功能
   const handleUpload = () => {
     if (isOffline) {
       message.error("网络已断开，无法上传文件");
@@ -106,21 +104,24 @@ const UploadButton: React.FC<UploadButtonProps> = ({
       `开始上传 ${pendingFiles.length} 个文件 (并发数: ${fileConcurrency})`
     );
 
-    // 创建一个延迟添加的函数，避免同时添加太多文件到队列造成阻塞
+    // 如果提供了onUploadAll回调，优先使用它（使用顺序上传）
+    if (onUploadAll && typeof onUploadAll === "function") {
+      onUploadAll();
+      return;
+    }
+
+    // 否则使用原来的方式
     const addFilesWithDelay = async () => {
-      // 将所有待上传文件添加到上传队列，每个文件间隔100毫秒添加
       for (let i = 0; i < pendingFiles.length; i++) {
         const file = pendingFiles[i];
         addFileToQueue(file.id, fileConcurrency);
 
-        // 每添加一个文件，等待100毫秒，避免过度阻塞
         if (i < pendingFiles.length - 1) {
           await new Promise((resolve) => setTimeout(resolve, 100));
         }
       }
     };
 
-    // 开始执行添加文件的流程
     addFilesWithDelay();
   };
 
@@ -174,26 +175,34 @@ const UploadButton: React.FC<UploadButtonProps> = ({
     message.success("已清空所有文件");
   };
 
-  // 重试所有失败的文件
+  // 重试所有失败的文件 - 合并两个重试功能
   const handleRetryAllFailed = () => {
     if (isOffline) {
       message.error("网络已断开，无法重试失败的文件");
       return;
     }
 
-    if (errorFiles.length === 0) {
+    // 确定要重试的文件数量
+    const retryCount = onRetryAllFailed ? failedFilesCount : errorFiles.length;
+
+    if (retryCount === 0) {
       message.warning("没有失败的文件需要重试");
       return;
     }
 
     // 显示开始重试的消息
     message.success(
-      `开始重试 ${errorFiles.length} 个失败的文件 (并发数: ${fileConcurrency})`
+      `开始重试 ${retryCount} 个失败的文件 (并发数: ${fileConcurrency})`
     );
 
-    // 创建一个延迟添加的函数，避免同时添加太多文件到队列造成阻塞
+    // 如果提供了onRetryAllFailed回调，优先使用它
+    if (onRetryAllFailed && typeof onRetryAllFailed === "function") {
+      onRetryAllFailed();
+      return;
+    }
+
+    // 否则使用原来的方式
     const retryFilesWithDelay = async () => {
-      // 将所有失败的文件重新添加到上传队列，每个文件间隔100毫秒添加
       for (let i = 0; i < errorFiles.length; i++) {
         const file = errorFiles[i];
         // 重置文件状态
@@ -201,14 +210,12 @@ const UploadButton: React.FC<UploadButtonProps> = ({
         // 添加到上传队列，并传递当前网络状态下的并发数
         addFileToQueue(file.id, fileConcurrency);
 
-        // 每添加一个文件，等待100毫秒，避免过度阻塞
         if (i < errorFiles.length - 1) {
           await new Promise((resolve) => setTimeout(resolve, 100));
         }
       }
     };
 
-    // 开始执行重试文件的流程
     retryFilesWithDelay();
   };
 
@@ -234,6 +241,12 @@ const UploadButton: React.FC<UploadButtonProps> = ({
     return networkType.toUpperCase();
   };
 
+  // 计算待上传文件总数
+  const totalPendingCount = pendingFiles.length;
+
+  // 计算失败文件总数
+  const totalFailedCount = Math.max(errorFiles.length, failedFilesCount || 0);
+
   return (
     <>
       {isOffline && (
@@ -255,17 +268,18 @@ const UploadButton: React.FC<UploadButtonProps> = ({
           alignItems: "center",
         }}
       >
-        {/* 第一组按钮 */}
+        {/* 主要操作按钮 */}
         <Space wrap>
+          {/* 合并的上传按钮 */}
           <Tooltip title="上传文件">
             <Button
               type="primary"
               icon={<CloudUploadOutlined />}
               onClick={handleUpload}
-              disabled={pendingFiles.length === 0 || isOffline}
+              disabled={totalPendingCount === 0 || isOffline}
               style={{ position: "relative", zIndex: 2 }}
             >
-              {pendingFiles.length > 0 && pendingFiles.length}
+              {totalPendingCount > 0 && totalPendingCount}
             </Button>
           </Tooltip>
 
@@ -291,8 +305,9 @@ const UploadButton: React.FC<UploadButtonProps> = ({
             />
           </Tooltip>
 
-          {errorFiles.length > 0 && (
-            <Tooltip title="重试所有失败文件">
+          {/* 合并的重试按钮 */}
+          {totalFailedCount > 0 && (
+            <Tooltip title="重试失败文件">
               <Button
                 type="primary"
                 danger
@@ -301,7 +316,7 @@ const UploadButton: React.FC<UploadButtonProps> = ({
                 disabled={isOffline}
                 style={{ position: "relative", zIndex: 2 }}
               >
-                {errorFiles.length}
+                {totalFailedCount}
               </Button>
             </Tooltip>
           )}
@@ -315,35 +330,8 @@ const UploadButton: React.FC<UploadButtonProps> = ({
               style={{ position: "relative", zIndex: 2 }}
             />
           </Tooltip>
-        </Space>
 
-        {/* 第二组按钮 */}
-        <Space>
-          {hasWaitingFiles && (
-            <Tooltip title="全部上传">
-              <Button
-                type="primary"
-                icon={<CloudUploadOutlined />}
-                onClick={onUploadAll}
-                disabled={hasUploadingFiles || isOffline}
-                style={{ position: "relative", zIndex: 2 }}
-              />
-            </Tooltip>
-          )}
-          {failedFilesCount > 0 && (
-            <Tooltip title="全部重试">
-              <Button
-                type="primary"
-                danger
-                icon={<ReloadOutlined />}
-                onClick={onRetryAllFailed}
-                disabled={hasUploadingFiles || isOffline}
-                style={{ position: "relative", zIndex: 2 }}
-              >
-                {failedFilesCount}
-              </Button>
-            </Tooltip>
-          )}
+          {/* 清除已完成按钮 */}
           {hasCompletedFiles && (
             <Tooltip title="清除已完成">
               <Button
@@ -357,7 +345,7 @@ const UploadButton: React.FC<UploadButtonProps> = ({
           )}
         </Space>
 
-        {/* 第三组按钮 - 网络状态 */}
+        {/* 网络状态显示 */}
         <Space>
           <Tooltip
             title={`网络状态: ${getNetworkTypeDisplay()}
