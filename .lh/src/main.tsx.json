@@ -3,7 +3,7 @@
     "activeCommit": 0,
     "commits": [
         {
-            "activePatchIndex": 3,
+            "activePatchIndex": 4,
             "patches": [
                 {
                     "date": 1748436120393,
@@ -20,6 +20,10 @@
                 {
                     "date": 1748436209324,
                     "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,6 +1,5 @@\n import \"antd/dist/reset.css\";\n-import \"antd/dist/antd.css\";\n \n import App from \"./App.tsx\";\n import { createRoot } from \"react-dom/client\";\n \n"
+                },
+                {
+                    "date": 1748746663026,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -2,5 +2,19 @@\n \n import App from \"./App.tsx\";\n import { createRoot } from \"react-dom/client\";\n \n+// 抑制 React 18 中关于 findDOMNode 的警告\n+// 这些警告主要来自 Ant Design 内部实现\n+const originalConsoleError = console.error;\n+console.error = (...args) => {\n+  if (\n+    args[0] &&\n+    typeof args[0] === \"string\" &&\n+    args[0].includes(\"findDOMNode\")\n+  ) {\n+    return;\n+  }\n+  originalConsoleError(...args);\n+};\n+\n createRoot(document.getElementById(\"root\")!).render(<App />);\n"
                 }
             ],
             "date": 1748436120393,
