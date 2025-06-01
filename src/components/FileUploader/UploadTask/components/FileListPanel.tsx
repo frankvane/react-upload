@@ -46,6 +46,7 @@ const FileListPanel: React.FC = () => {
   const paginationRef = useRef(pagination);
   const autoPageChangeRef = useRef(false); // 标记是否处于自动翻页状态
   const processingPageChangeRef = useRef(false); // 标记是否正在处理页面更改
+  const prevFilesCountRef = useRef<number>(0); // 追踪文件数量变化
 
   // 当pagination状态更新时同步到ref
   useEffect(() => {
@@ -64,7 +65,7 @@ const FileListPanel: React.FC = () => {
   const { sortedFiles, setSortState } = useSortedUploadFiles(uploadFiles);
 
   // 使用自定义 Hook 获取文件状态
-  const { hasUploadingFiles, hasCompletedFiles, hasWaitingFiles, failedFiles } =
+  const { hasUploadingFiles, hasCompletedFiles, failedFiles } =
     useUploadFileStatus(sortedFiles);
 
   // 批量上传结果汇总通知
@@ -136,13 +137,32 @@ const FileListPanel: React.FC = () => {
     }
   }, [sortedFiles]);
 
-  // 当前页的上传进度监控 - 使用防抖动和状态追踪防止无限循环
+  // 在组件中添加对文件添加的监听
+  useEffect(() => {
+    // 如果文件数量增加，说明有新文件被添加，将分页重置到第1页
+    if (uploadFiles.length > prevFilesCountRef.current) {
+      // 重置到第1页
+      setPagination((prev) => {
+        const newPagination = {
+          ...prev,
+          current: 1,
+        };
+        paginationRef.current = newPagination;
+        return newPagination;
+      });
+    }
+
+    // 更新文件数量引用
+    prevFilesCountRef.current = uploadFiles.length;
+  }, [uploadFiles.length]);
+
+  // 修改自动翻页逻辑，只有在上传过程中才自动翻页
   useEffect(() => {
     // 避免在正在处理页面更改时再次触发
     if (processingPageChangeRef.current || autoPageChangeRef.current) return;
 
-    // 如果没有上传中的文件或等待上传的文件，就不需要检查翻页
-    if (!hasUploadingFiles && !hasWaitingFiles) return;
+    // 如果没有上传中的文件，就不需要检查翻页
+    if (!hasUploadingFiles) return;
 
     // 获取当前分页信息
     const { current = 1, pageSize = 10 } = paginationRef.current;
@@ -158,11 +178,10 @@ const FileListPanel: React.FC = () => {
       Math.min(endIndex, sortedFiles.length)
     );
 
-    // 检查当前页是否还有正在上传或等待上传的文件
+    // 检查当前页是否还有正在上传的文件
     const hasCurrentPageUploading = currentPageFiles.some(
       (file) =>
         file.status === UploadStatus.UPLOADING ||
-        file.status === UploadStatus.QUEUED_FOR_UPLOAD ||
         file.status === UploadStatus.QUEUED ||
         file.status === UploadStatus.CALCULATING
     );
@@ -172,18 +191,19 @@ const FileListPanel: React.FC = () => {
 
     // 如果当前页没有正在上传的文件，但是有下一页，则自动跳转到下一页
     if (!hasCurrentPageUploading && hasNextPage) {
-      // 检查下一页是否有待上传文件
+      // 检查下一页是否有待上传或正在上传的文件
       const nextPageFiles = sortedFiles.slice(
         endIndex,
         Math.min(endIndex + pageSize, sortedFiles.length)
       );
-      const hasNextPagePendingFiles = nextPageFiles.some(
+      const hasNextPageUploadingFiles = nextPageFiles.some(
         (file) =>
-          file.status === UploadStatus.QUEUED_FOR_UPLOAD ||
-          file.status === UploadStatus.QUEUED
+          file.status === UploadStatus.QUEUED ||
+          file.status === UploadStatus.UPLOADING ||
+          file.status === UploadStatus.CALCULATING
       );
 
-      if (hasNextPagePendingFiles) {
+      if (hasNextPageUploadingFiles) {
         // 标记为自动翻页状态，防止重复触发
         autoPageChangeRef.current = true;
         processingPageChangeRef.current = true;
@@ -200,28 +220,15 @@ const FileListPanel: React.FC = () => {
             return newPagination;
           });
 
-          // 上传下一页中的待上传文件
-          const pendingFileIds = nextPageFiles
-            .filter((file) => file.status === UploadStatus.QUEUED_FOR_UPLOAD)
-            .map((file) => file.id);
-
-          if (pendingFileIds.length > 0) {
-            // 等待一段时间后开始上传
-            setTimeout(() => {
-              uploadFilesInSequence(pendingFileIds);
-              // 重置标记
-              processingPageChangeRef.current = false;
-              autoPageChangeRef.current = false;
-            }, 300);
-          } else {
-            // 重置标记
+          // 重置标记
+          setTimeout(() => {
             processingPageChangeRef.current = false;
             autoPageChangeRef.current = false;
-          }
+          }, 300);
         }, 100);
       }
     }
-  }, [sortedFiles, hasUploadingFiles, hasWaitingFiles]);
+  }, [sortedFiles, hasUploadingFiles]);
 
   // 处理表格排序和分页变化
   const handleTableChange = (
