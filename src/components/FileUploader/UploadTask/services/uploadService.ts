@@ -784,6 +784,35 @@ export const getQueueStats = () => {
   };
 };
 
+// 中断所有上传任务
+export const stopAllUploads = (): void => {
+  // 清空队列中的任务
+  uploadQueue.clear();
+
+  // 中断所有正在进行的上传
+  Object.keys(fileAbortControllers).forEach((fileId) => {
+    if (fileAbortControllers[fileId]) {
+      fileAbortControllers[fileId].abort();
+      delete fileAbortControllers[fileId];
+    }
+  });
+
+  // 将所有正在上传的文件状态改为错误
+  const { uploadFiles, updateFileStatus, setErrorMessage } =
+    useUploadStore.getState();
+  uploadFiles.forEach((file) => {
+    if (
+      file.status === UploadStatus.UPLOADING ||
+      file.status === UploadStatus.QUEUED ||
+      file.status === UploadStatus.CALCULATING ||
+      file.status === UploadStatus.PREPARING_UPLOAD
+    ) {
+      updateFileStatus(file.id, UploadStatus.ERROR, 0);
+      setErrorMessage(file.id, "上传已被用户中断");
+    }
+  });
+};
+
 // 清除所有上传记录和缓存
 export const clearAllUploads = async (): Promise<boolean> => {
   // 检查是否启用了IndexedDB存储

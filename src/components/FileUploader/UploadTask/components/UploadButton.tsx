@@ -7,6 +7,7 @@ import {
   DisconnectOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
+  StopOutlined,
   WifiOutlined,
 } from "@ant-design/icons";
 import React, { useEffect, useState } from "react";
@@ -15,6 +16,7 @@ import {
   clearQueue,
   pauseQueue,
   resumeQueue,
+  stopAllUploads,
   updateQueueConcurrency,
 } from "../services/uploadService";
 
@@ -115,6 +117,18 @@ const UploadButton: React.FC = () => {
       setQueuePaused(true);
       message.info("已暂停上传队列");
     }
+  };
+
+  // 中断所有上传
+  const handleStopAllUploads = () => {
+    if (uploadingFiles.length === 0) {
+      message.warning("没有正在上传的文件");
+      return;
+    }
+
+    stopAllUploads();
+    setQueuePaused(false); // 重置暂停状态
+    message.info("已中断所有上传任务");
   };
 
   // 清空队列
@@ -227,6 +241,15 @@ const UploadButton: React.FC = () => {
           type={queuePaused ? "primary" : "default"}
         >
           {queuePaused ? "恢复上传" : "暂停上传"}
+        </Button>
+
+        <Button
+          danger
+          icon={<StopOutlined />}
+          onClick={handleStopAllUploads}
+          disabled={uploadingFiles.length === 0 || isOffline}
+        >
+          中断上传
         </Button>
 
         {errorFiles.length > 0 && (
