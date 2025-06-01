@@ -9,7 +9,6 @@ import {
   PauseCircleOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
-  StopOutlined,
   WifiOutlined,
 } from "@ant-design/icons";
 import React, { useEffect, useState } from "react";
@@ -19,7 +18,6 @@ import {
   getQueueStats,
   pauseQueue,
   resumeQueue,
-  stopAllUploads,
   updateQueueConcurrency,
 } from "../services/uploadService";
 
@@ -36,6 +34,7 @@ interface UploadButtonProps {
   onUploadAll?: () => void;
   onRetryAllFailed?: () => void;
   onClearCompleted?: () => void;
+  onJumpToFirstPage?: () => void;
 }
 
 const UploadButton: React.FC<UploadButtonProps> = ({
@@ -46,10 +45,17 @@ const UploadButton: React.FC<UploadButtonProps> = ({
   onUploadAll,
   onRetryAllFailed,
   onClearCompleted,
+  onJumpToFirstPage,
 }) => {
+  // 上传状态管理
   const [queuePaused, setQueuePaused] = useState<boolean>(false);
+
+  // 保存暂停/中断前的待上传文件信息
+  // 已由pausedAllFileIds取代，无需单独保存pending
+
   const uploadFiles = useUploadStore((state) => state.uploadFiles);
   const removeFile = useUploadStore((state) => state.removeFile);
+  const resetFile = useUploadStore((state) => state.resetFile);
 
   // 使用网络状态 hook
   const { networkType, chunkSize, fileConcurrency, chunkConcurrency } =
@@ -81,12 +87,16 @@ const UploadButton: React.FC<UploadButtonProps> = ({
       file.status === UploadStatus.UPLOADING
   );
 
+  // 获取所有暂停状态的文件
+  const pausedFiles = uploadFiles.filter(
+    (file) => file.status === UploadStatus.PAUSED
+  );
+
   // 获取所有错误状态的文件
   const errorFiles = uploadFiles.filter(
     (file) =>
       file.status === UploadStatus.ERROR ||
-      file.status === UploadStatus.MERGE_ERROR ||
-      file.status === UploadStatus.ABORTED
+      file.status === UploadStatus.MERGE_ERROR
   );
 
   // 处理上传按钮点击 - 合并上传文件和全部上传功能
@@ -105,6 +115,9 @@ const UploadButton: React.FC<UploadButtonProps> = ({
     message.success(
       `开始上传 ${pendingFiles.length} 个文件 (并发数: ${fileConcurrency})`
     );
+
+    // 如果上传队列之前被暂停或中断，重置状态
+    setQueuePaused(false);
 
     // 如果提供了onUploadAll回调，优先使用它（使用顺序上传）
     if (onUploadAll && typeof onUploadAll === "function") {
@@ -127,40 +140,73 @@ const UploadButton: React.FC<UploadButtonProps> = ({
     addFilesWithDelay();
   };
 
-  // 暂停/恢复上传队列
-  const toggleQueuePause = async () => {
+  // 暂停上传队列
+  const handlePauseQueue = async () => {
     if (isOffline) {
       message.error("网络已断开，无法操作上传队列");
       return;
     }
 
-    if (queuePaused) {
-      await resumeQueue(fileConcurrency);
-      setQueuePaused(false);
-      message.info(`已恢复上传队列 (并发数: ${fileConcurrency})`);
-    } else {
-      pauseQueue();
-      setQueuePaused(true);
-      message.info("已暂停上传队列");
-    }
-  };
-
-  // 中断所有上传
-  const handleStopAllUploads = () => {
-    if (uploadingFiles.length === 0) {
-      message.warning("没有正在上传的文件");
+    if (uploadingFiles.length === 0 && pendingFiles.length === 0) {
+      message.warning("没有正在上传或待上传的文件");
       return;
     }
 
-    // 直接执行中断操作
-    const abortedFileIds = stopAllUploads();
-    setQueuePaused(false); // 重置暂停状态
+    // 暂停上传
+    message.info("正在暂停上传队列...");
 
-    // 显示中断成功的消息
-    if (abortedFileIds.length > 0) {
-      message.success(`已中断 ${abortedFileIds.length} 个上传任务`);
+    // 暂停队列处理并暂停所有正在上传的文件
+    pauseQueue();
+    clearQueue();
+    setQueuePaused(true);
+  };
+
+  // 恢复暂停的上传队列
+  const handleResumeQueue = async () => {
+    if (isOffline) {
+      message.error("网络已断开，无法操作上传队列");
+      return;
+    }
+
+    // 收集所有未完成（未DONE/INSTANT/ERROR/MERGE_ERROR）文件ID
+    const unfinishedFiles = uploadFiles.filter(
+      (file) =>
+        file.status !== UploadStatus.DONE &&
+        file.status !== UploadStatus.INSTANT &&
+        file.status !== UploadStatus.ERROR &&
+        file.status !== UploadStatus.MERGE_ERROR
+    );
+    if (unfinishedFiles.length === 0) {
+      message.warning("没有暂停的文件需要恢复");
+      return;
+    }
+
+    message.info(`正在恢复上传队列 (并发数: ${fileConcurrency})...`);
+    await resumeQueue(fileConcurrency);
+
+    // 顺序调度所有未完成文件
+    for (let i = 0; i < unfinishedFiles.length; i++) {
+      const fileId = unfinishedFiles[i].id;
+      resetFile(fileId);
+      addFileToQueue(fileId, fileConcurrency);
+      if (i < unfinishedFiles.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    }
+    setQueuePaused(false);
+    message.success(`已恢复上传队列 (并发数: ${fileConcurrency})`);
+    // 恢复后跳到第1页
+    if (typeof onJumpToFirstPage === "function") {
+      onJumpToFirstPage();
+    }
+  };
+
+  // 切换暂停/恢复上传队列
+  const toggleQueuePause = async () => {
+    if (queuePaused) {
+      await handleResumeQueue();
     } else {
-      message.info("已中断所有上传任务");
+      await handlePauseQueue();
     }
   };
 
@@ -181,6 +227,9 @@ const UploadButton: React.FC<UploadButtonProps> = ({
       removeFile(file.id);
     });
 
+    // 重置UI状态
+    setQueuePaused(false);
+
     message.success("已清空所有文件");
   };
 
@@ -191,12 +240,11 @@ const UploadButton: React.FC<UploadButtonProps> = ({
       return;
     }
 
-    // 获取所有错误和中断状态的文件
+    // 获取所有错误状态的文件
     const errorAndAbortedFiles = uploadFiles.filter(
       (file) =>
         file.status === UploadStatus.ERROR ||
-        file.status === UploadStatus.MERGE_ERROR ||
-        file.status === UploadStatus.ABORTED
+        file.status === UploadStatus.MERGE_ERROR
     );
 
     // 确定要重试的文件数量
@@ -207,6 +255,11 @@ const UploadButton: React.FC<UploadButtonProps> = ({
     if (retryCount === 0) {
       message.warning("没有失败或已中断的文件需要重试");
       return;
+    }
+
+    // 如果队列处于暂停状态，恢复队列
+    if (queuePaused) {
+      setQueuePaused(false);
     }
 
     // 显示开始重试的消息
@@ -226,13 +279,12 @@ const UploadButton: React.FC<UploadButtonProps> = ({
       const queueStats = getQueueStats();
       if (queueStats.isPaused) {
         resumeQueue(fileConcurrency);
-        setQueuePaused(false); // 更新UI状态
       }
 
       for (let i = 0; i < errorAndAbortedFiles.length; i++) {
         const file = errorAndAbortedFiles[i];
         // 重置文件状态
-        useUploadStore.getState().resetFile(file.id);
+        resetFile(file.id);
         // 添加到上传队列，并传递当前网络状态下的并发数
         addFileToQueue(file.id, fileConcurrency);
 
@@ -296,42 +348,38 @@ const UploadButton: React.FC<UploadButtonProps> = ({
       >
         {/* 主要操作按钮 */}
         <Space wrap>
-          {/* 合并的上传按钮 */}
+          {/* 上传文件按钮 */}
           <Tooltip title="上传文件">
             <Button
               type="primary"
               icon={<CloudUploadOutlined />}
               onClick={handleUpload}
-              disabled={totalPendingCount === 0 || isOffline}
+              disabled={totalPendingCount === 0 || isOffline || queuePaused}
               style={{ position: "relative", zIndex: 2 }}
             >
               {totalPendingCount > 0 && totalPendingCount}
             </Button>
           </Tooltip>
 
+          {/* 暂停/恢复上传队列按钮 */}
           <Tooltip title={queuePaused ? "恢复上传" : "暂停上传"}>
             <Button
               icon={
                 queuePaused ? <PlayCircleOutlined /> : <PauseCircleOutlined />
               }
               onClick={toggleQueuePause}
-              disabled={uploadingFiles.length === 0 || isOffline}
+              disabled={
+                (uploadingFiles.length === 0 &&
+                  pendingFiles.length === 0 &&
+                  pausedFiles.length === 0) ||
+                isOffline
+              }
               type={queuePaused ? "primary" : "default"}
               style={{ position: "relative", zIndex: 2 }}
             />
           </Tooltip>
 
-          <Tooltip title="中断上传">
-            <Button
-              danger
-              icon={<StopOutlined />}
-              onClick={handleStopAllUploads}
-              disabled={uploadingFiles.length === 0 || isOffline}
-              style={{ position: "relative", zIndex: 2 }}
-            />
-          </Tooltip>
-
-          {/* 合并的重试按钮 */}
+          {/* 重试失败或已中断文件按钮 */}
           {totalFailedCount > 0 && (
             <Tooltip title="重试失败或已中断文件">
               <Button
@@ -339,7 +387,7 @@ const UploadButton: React.FC<UploadButtonProps> = ({
                 danger
                 icon={<ReloadOutlined />}
                 onClick={handleRetryAllFailed}
-                disabled={isOffline}
+                disabled={isOffline || queuePaused}
                 style={{ position: "relative", zIndex: 2 }}
               >
                 {totalFailedCount}
@@ -347,6 +395,7 @@ const UploadButton: React.FC<UploadButtonProps> = ({
             </Tooltip>
           )}
 
+          {/* 清空队列按钮 */}
           <Tooltip title="清空队列">
             <Button
               danger

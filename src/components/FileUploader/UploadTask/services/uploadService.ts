@@ -394,8 +394,7 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
     if (
       uploadFile.status !== UploadStatus.QUEUED_FOR_UPLOAD &&
       uploadFile.status !== UploadStatus.QUEUED &&
-      uploadFile.status !== UploadStatus.PAUSED &&
-      uploadFile.status !== UploadStatus.ABORTED
+      uploadFile.status !== UploadStatus.PAUSED
     ) {
       console.log(`[DEBUG] 文件 ${fileId} 状态不合法: ${uploadFile.status}`);
       return;
@@ -691,13 +690,10 @@ export const addFileToQueue = (
 
   // 如果文件已经在队列中或已完成，则不再添加
   if (
-    file.status !== UploadStatus.QUEUED_FOR_UPLOAD &&
-    file.status !== UploadStatus.ERROR &&
-    file.status !== UploadStatus.MERGE_ERROR &&
-    file.status !== UploadStatus.PAUSED &&
-    file.status !== UploadStatus.ABORTED
+    file.status === UploadStatus.DONE ||
+    file.status === UploadStatus.INSTANT
   ) {
-    console.log(`[DEBUG] 文件 ${fileId} 状态不允许添加到队列`);
+    console.log(`[DEBUG] 文件 ${fileId} 状态已完成，不再添加到队列`);
     return;
   }
 
@@ -935,50 +931,6 @@ export const getQueueStats = () => {
   };
 };
 
-// 中断所有上传任务
-export const stopAllUploads = (): string[] => {
-  console.log(`[DEBUG] 中断所有上传任务`);
-
-  // 清空队列中的任务
-  uploadQueue.clear();
-  console.log(`[DEBUG] 已清空上传队列`);
-
-  // 记录被中断的文件ID，用于返回
-  const abortedFileIds: string[] = [];
-
-  // 中断所有正在进行的上传
-  Object.keys(fileAbortControllers).forEach((fileId) => {
-    if (fileAbortControllers[fileId]) {
-      console.log(`[DEBUG] 中断文件 ${fileId} 的上传`);
-      fileAbortControllers[fileId].abort();
-      delete fileAbortControllers[fileId];
-    }
-  });
-
-  // 将所有正在上传的文件状态改为已中断
-  const { uploadFiles, updateFileStatus, setErrorMessage } =
-    useUploadStore.getState();
-  uploadFiles.forEach((file) => {
-    if (
-      file.status === UploadStatus.UPLOADING ||
-      file.status === UploadStatus.QUEUED ||
-      file.status === UploadStatus.CALCULATING ||
-      file.status === UploadStatus.PREPARING_UPLOAD
-    ) {
-      // 使用 ABORTED 状态，并保留当前进度
-      console.log(
-        `[DEBUG] 将文件 ${file.id} 状态设置为 ABORTED，当前进度: ${file.progress}%`
-      );
-      updateFileStatus(file.id, UploadStatus.ABORTED, file.progress);
-      setErrorMessage(file.id, "上传已被用户中断");
-      abortedFileIds.push(file.id);
-    }
-  });
-
-  console.log(`[DEBUG] 共中断了 ${abortedFileIds.length} 个文件的上传`);
-  return abortedFileIds; // 返回被中断的文件ID列表
-};
-
 // 清除所有上传记录和缓存
 export const clearAllUploads = async (): Promise<boolean> => {
   // 检查是否启用了IndexedDB存储
@@ -1015,9 +967,7 @@ export const uploadFilesInSequence = async (
   for (let i = 0; i < fileIds.length; i++) {
     const fileId = fileIds[i];
     console.log(
-      `[DEBUG] 开始处理顺序上传中的第 ${i + 1}/${
-        fileIds.length
-      } 个文件: ${fileId}`
+      `[DEBUG] 顺序上传队列添加第 ${i + 1}/${fileIds.length} 个文件: ${fileId}`
     );
 
     const { uploadFiles, resetFile } = useUploadStore.getState();
@@ -1033,26 +983,22 @@ export const uploadFilesInSequence = async (
     // 如果文件处于错误或已中断状态，先重置状态
     if (
       file.status === UploadStatus.ERROR ||
-      file.status === UploadStatus.MERGE_ERROR ||
-      file.status === UploadStatus.ABORTED
+      file.status === UploadStatus.MERGE_ERROR
     ) {
       console.log(`[DEBUG] 重置文件 ${fileId} 状态`);
       resetFile(fileId);
     }
 
-    // 添加到队列
+    // 只通过队列添加任务，不再直接调用processFileUpload
     addFileToQueue(fileId, 9999);
 
-    // 直接处理文件上传，不依赖队列
-    console.log(`[DEBUG] 直接处理文件 ${fileId} 上传，不依赖队列`);
-    try {
-      await processFileUpload(fileId);
-    } catch (err) {
-      console.error(`[ERROR] 直接处理文件 ${fileId} 上传失败:`, err);
+    // 每添加一个，等待100ms，避免阻塞
+    if (i < fileIds.length - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
   }
 
-  console.log(`[DEBUG] 所有文件顺序上传处理完成`);
+  console.log(`[DEBUG] 所有文件顺序上传任务已全部加入队列`);
 };
 
 // 自动根据网络状态暂停/恢复上传队列的 hook

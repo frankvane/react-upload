@@ -4,7 +4,6 @@ import React, { useEffect } from "react";
 import FileListPanel from "./components/FileListPanel";
 import FileSelector from "./components/FileSelector";
 import IndexedDBSwitch from "./components/IndexedDBSwitch";
-import MemoryUsage from "../../MemoryUsage";
 import { useUploadStore } from "./store/uploadStore";
 
 interface UploadTaskProps {
@@ -12,7 +11,6 @@ interface UploadTaskProps {
   accept?: string;
   multiple?: boolean;
   maxSize?: number;
-  showMemoryUsage?: boolean;
   useIndexedDB?: boolean; // 是否使用IndexedDB存储文件
 }
 
@@ -21,7 +19,6 @@ const UploadTask: React.FC<UploadTaskProps> = ({
   accept = "*",
   multiple = true,
   maxSize = 500,
-  showMemoryUsage = false,
   useIndexedDB = false, // 默认禁用IndexedDB存储
 }) => {
   const { setUseIndexedDB, initializeFromIndexedDB } = useUploadStore();
@@ -48,8 +45,6 @@ const UploadTask: React.FC<UploadTaskProps> = ({
       <FileSelector accept={accept} multiple={multiple} maxSize={maxSize} />
 
       <FileListPanel />
-
-      {showMemoryUsage && <MemoryUsage />}
     </Card>
   );
 };

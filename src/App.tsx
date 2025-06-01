@@ -8,7 +8,6 @@ function App() {
         accept="*"
         multiple={true}
         maxSize={1024} // 最大1GB
-        showMemoryUsage={false} // 显示内存使用状态
       />
     </div>
   );

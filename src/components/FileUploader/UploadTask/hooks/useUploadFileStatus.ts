@@ -30,8 +30,7 @@ export function useUploadFileStatus(uploadFiles: UploadFile[]) {
     return uploadFiles.filter(
       (file) =>
         file.status === UploadStatus.ERROR ||
-        file.status === UploadStatus.MERGE_ERROR ||
-        file.status === UploadStatus.ABORTED
+        file.status === UploadStatus.MERGE_ERROR
     );
   }, [uploadFiles]);
 
