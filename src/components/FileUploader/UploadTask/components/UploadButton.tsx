@@ -2,6 +2,7 @@ import * as dbService from "../services/dbService";
 
 import { Alert, Badge, Button, Space, Tooltip, message } from "antd";
 import {
+  ClearOutlined,
   CloudUploadOutlined,
   DeleteOutlined,
   DisconnectOutlined,
@@ -246,58 +247,118 @@ const UploadButton: React.FC<UploadButtonProps> = ({
         />
       )}
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-        {/* 主上传按钮组 */}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "8px",
+          alignItems: "center",
+        }}
+      >
+        {/* 第一组按钮 */}
         <Space wrap>
-          <Button
-            type="primary"
-            icon={<CloudUploadOutlined />}
-            onClick={handleUpload}
-            disabled={pendingFiles.length === 0 || isOffline}
-          >
-            上传文件 {pendingFiles.length > 0 ? `(${pendingFiles.length})` : ""}
-          </Button>
-
-          <Button
-            icon={
-              queuePaused ? <PlayCircleOutlined /> : <PauseCircleOutlined />
-            }
-            onClick={toggleQueuePause}
-            disabled={uploadingFiles.length === 0 || isOffline}
-            type={queuePaused ? "primary" : "default"}
-          >
-            {queuePaused ? "恢复上传" : "暂停上传"}
-          </Button>
-
-          <Button
-            danger
-            icon={<StopOutlined />}
-            onClick={handleStopAllUploads}
-            disabled={uploadingFiles.length === 0 || isOffline}
-          >
-            中断上传
-          </Button>
-
-          {errorFiles.length > 0 && (
+          <Tooltip title="上传文件">
             <Button
               type="primary"
-              danger
-              onClick={handleRetryAllFailed}
-              disabled={isOffline}
+              icon={<CloudUploadOutlined />}
+              onClick={handleUpload}
+              disabled={pendingFiles.length === 0 || isOffline}
+              style={{ position: "relative", zIndex: 2 }}
             >
-              全部重试 ({errorFiles.length})
+              {pendingFiles.length > 0 && pendingFiles.length}
             </Button>
+          </Tooltip>
+
+          <Tooltip title={queuePaused ? "恢复上传" : "暂停上传"}>
+            <Button
+              icon={
+                queuePaused ? <PlayCircleOutlined /> : <PauseCircleOutlined />
+              }
+              onClick={toggleQueuePause}
+              disabled={uploadingFiles.length === 0 || isOffline}
+              type={queuePaused ? "primary" : "default"}
+              style={{ position: "relative", zIndex: 2 }}
+            />
+          </Tooltip>
+
+          <Tooltip title="中断上传">
+            <Button
+              danger
+              icon={<StopOutlined />}
+              onClick={handleStopAllUploads}
+              disabled={uploadingFiles.length === 0 || isOffline}
+              style={{ position: "relative", zIndex: 2 }}
+            />
+          </Tooltip>
+
+          {errorFiles.length > 0 && (
+            <Tooltip title="重试所有失败文件">
+              <Button
+                type="primary"
+                danger
+                icon={<ReloadOutlined />}
+                onClick={handleRetryAllFailed}
+                disabled={isOffline}
+                style={{ position: "relative", zIndex: 2 }}
+              >
+                {errorFiles.length}
+              </Button>
+            </Tooltip>
           )}
 
-          <Button
-            danger
-            icon={<DeleteOutlined />}
-            onClick={handleClearQueue}
-            disabled={uploadFiles.length === 0 || uploadingFiles.length > 0}
-          >
-            清空队列
-          </Button>
+          <Tooltip title="清空队列">
+            <Button
+              danger
+              icon={<DeleteOutlined />}
+              onClick={handleClearQueue}
+              disabled={uploadFiles.length === 0 || uploadingFiles.length > 0}
+              style={{ position: "relative", zIndex: 2 }}
+            />
+          </Tooltip>
+        </Space>
 
+        {/* 第二组按钮 */}
+        <Space>
+          {hasWaitingFiles && (
+            <Tooltip title="全部上传">
+              <Button
+                type="primary"
+                icon={<CloudUploadOutlined />}
+                onClick={onUploadAll}
+                disabled={hasUploadingFiles || isOffline}
+                style={{ position: "relative", zIndex: 2 }}
+              />
+            </Tooltip>
+          )}
+          {failedFilesCount > 0 && (
+            <Tooltip title="全部重试">
+              <Button
+                type="primary"
+                danger
+                icon={<ReloadOutlined />}
+                onClick={onRetryAllFailed}
+                disabled={hasUploadingFiles || isOffline}
+                style={{ position: "relative", zIndex: 2 }}
+              >
+                {failedFilesCount}
+              </Button>
+            </Tooltip>
+          )}
+          {hasCompletedFiles && (
+            <Tooltip title="清除已完成">
+              <Button
+                danger
+                icon={<ClearOutlined />}
+                onClick={onClearCompleted}
+                disabled={hasUploadingFiles}
+                style={{ position: "relative", zIndex: 2 }}
+              />
+            </Tooltip>
+          )}
+        </Space>
+
+        {/* 第三组按钮 - 网络状态 */}
+        <Space>
           <Tooltip
             title={`网络状态: ${getNetworkTypeDisplay()}
             ${
@@ -318,49 +379,15 @@ const UploadButton: React.FC<UploadButtonProps> = ({
               }
               size="small"
             >
-              <Button type="text" danger={isOffline}>
+              <Button
+                type={isOffline ? "default" : "text"}
+                danger={isOffline}
+                style={{ position: "relative", zIndex: 2 }}
+              >
                 {getNetworkTypeDisplay()}
               </Button>
             </Badge>
           </Tooltip>
-        </Space>
-
-        {/* 合并FileListToolbar的按钮 */}
-        <Space>
-          {hasWaitingFiles && (
-            <Button
-              type="primary"
-              onClick={onUploadAll}
-              size="small"
-              disabled={hasUploadingFiles || isOffline}
-              style={{ position: "relative", zIndex: 2 }}
-            >
-              全部上传
-            </Button>
-          )}
-          {failedFilesCount > 0 && (
-            <Button
-              type="link"
-              icon={<ReloadOutlined />}
-              onClick={onRetryAllFailed}
-              size="small"
-              disabled={hasUploadingFiles || isOffline}
-              style={{ position: "relative", zIndex: 2 }}
-            >
-              全部重试 ({failedFilesCount})
-            </Button>
-          )}
-          {hasCompletedFiles && (
-            <Button
-              type="link"
-              onClick={onClearCompleted}
-              size="small"
-              disabled={hasUploadingFiles}
-              style={{ position: "relative", zIndex: 2 }}
-            >
-              清除已完成
-            </Button>
-          )}
         </Space>
       </div>
     </>
