@@ -47,16 +47,6 @@ const FileSelector: React.FC<FileSelectorProps> = ({
 
   const addFile = useUploadStore((state) => state.addFile);
 
-  // 创建一个记录网络状态的引用，便于在日志中查看
-  useEffect(() => {
-    console.log("当前网络状态:", {
-      networkType,
-      chunkSize: `${(chunkSize / (1024 * 1024)).toFixed(1)}MB`,
-      fileConcurrency,
-      chunkConcurrency,
-    });
-  }, [networkType, chunkSize, fileConcurrency, chunkConcurrency]);
-
   const handleFileSelect = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     if (processing) return;
@@ -188,8 +178,6 @@ const FileSelector: React.FC<FileSelectorProps> = ({
       if (autoUpload && successFileIds.length > 0 && !isOffline) {
         // 创建一个延迟添加的函数，避免同时添加太多文件到队列造成阻塞
         const autoUploadWithDelay = async () => {
-          console.log(`开始自动上传 ${successFileIds.length} 个文件`);
-
           // 将文件添加到上传队列，每个文件间隔100毫秒添加
           for (let i = 0; i < successFileIds.length; i++) {
             const fileId = successFileIds[i];
@@ -200,8 +188,6 @@ const FileSelector: React.FC<FileSelectorProps> = ({
               await new Promise((resolve) => setTimeout(resolve, 100));
             }
           }
-
-          console.log(`已自动上传 ${successFileIds.length} 个文件`);
         };
 
         // 执行自动上传

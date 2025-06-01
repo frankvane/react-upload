@@ -37,13 +37,6 @@ const UploadButton: React.FC = () => {
   // 监听网络状态变化，更新队列并发数
   useEffect(() => {
     updateQueueConcurrency(fileConcurrency);
-    console.log("网络状态已更新:", {
-      networkType,
-      chunkSize: `${(chunkSize / (1024 * 1024)).toFixed(1)}MB`,
-      fileConcurrency,
-      chunkConcurrency,
-    });
-
     // 当网络离线时显示提示
     if (isOffline) {
       message.warning("网络已断开，上传功能将暂时不可用");
@@ -90,8 +83,6 @@ const UploadButton: React.FC = () => {
 
     // 创建一个延迟添加的函数，避免同时添加太多文件到队列造成阻塞
     const addFilesWithDelay = async () => {
-      console.log(`开始添加 ${pendingFiles.length} 个文件到上传队列`);
-
       // 将所有待上传文件添加到上传队列，每个文件间隔100毫秒添加
       for (let i = 0; i < pendingFiles.length; i++) {
         const file = pendingFiles[i];
@@ -102,8 +93,6 @@ const UploadButton: React.FC = () => {
           await new Promise((resolve) => setTimeout(resolve, 100));
         }
       }
-
-      console.log(`已添加所有 ${pendingFiles.length} 个文件到上传队列`);
     };
 
     // 开始执行添加文件的流程
@@ -167,8 +156,6 @@ const UploadButton: React.FC = () => {
 
     // 创建一个延迟添加的函数，避免同时添加太多文件到队列造成阻塞
     const retryFilesWithDelay = async () => {
-      console.log(`开始重试 ${errorFiles.length} 个失败的文件`);
-
       // 将所有失败的文件重新添加到上传队列，每个文件间隔100毫秒添加
       for (let i = 0; i < errorFiles.length; i++) {
         const file = errorFiles[i];
@@ -182,8 +169,6 @@ const UploadButton: React.FC = () => {
           await new Promise((resolve) => setTimeout(resolve, 100));
         }
       }
-
-      console.log(`已重试所有 ${errorFiles.length} 个失败的文件`);
     };
 
     // 开始执行重试文件的流程
@@ -266,13 +251,13 @@ const UploadButton: React.FC = () => {
 
         <Tooltip
           title={`网络状态: ${getNetworkTypeDisplay()}
-${
-  !isOffline
-    ? `切片大小: ${(chunkSize / (1024 * 1024)).toFixed(1)}MB
-文件并发: ${fileConcurrency}
-分片并发: ${chunkConcurrency}`
-    : "网络已断开，无法上传文件"
-}`}
+          ${
+            !isOffline
+              ? `切片大小: ${(chunkSize / (1024 * 1024)).toFixed(1)}MB
+          文件并发: ${fileConcurrency}
+          分片并发: ${chunkConcurrency}`
+              : "网络已断开，无法上传文件"
+          }`}
         >
           <Badge
             count={

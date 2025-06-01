@@ -227,11 +227,6 @@ const FileListPanel: React.FC = () => {
     // 获取文件ID数组
     const fileIds = waitingFiles.map((file) => file.id);
 
-    console.log(
-      "按当前顺序上传文件：",
-      waitingFiles.map((f) => f.fileName)
-    );
-
     // 使用顺序上传功能
     if (fileIds.length > 0) {
       uploadFilesInSequence(fileIds);
