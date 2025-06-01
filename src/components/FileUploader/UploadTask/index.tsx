@@ -5,17 +5,13 @@ import FileListPanel from "./components/FileListPanel";
 import FileSelector from "./components/FileSelector";
 import IndexedDBSwitch from "./components/IndexedDBSwitch";
 import MemoryUsage from "../../MemoryUsage";
-import UploadButton from "./components/UploadButton";
 import { useUploadStore } from "./store/uploadStore";
-
-// import { memoryManager } from "../../../utils/memoryOptimizer";
 
 interface UploadTaskProps {
   title?: string;
   accept?: string;
   multiple?: boolean;
   maxSize?: number;
-  maxCount?: number;
   showMemoryUsage?: boolean;
   useIndexedDB?: boolean; // 是否使用IndexedDB存储文件
 }
@@ -25,16 +21,9 @@ const UploadTask: React.FC<UploadTaskProps> = ({
   accept = "*",
   multiple = true,
   maxSize = 500,
-  maxCount = 10,
   showMemoryUsage = false,
   useIndexedDB = false, // 默认禁用IndexedDB存储
 }) => {
-  // 注册内存管理器，在内存不足时释放一些资源
-  // memoryManager.register("upload", async () => {
-  //   // TODO: 实现内存不足时的资源释放
-  //   return true;
-  // });
-
   const { setUseIndexedDB, initializeFromIndexedDB } = useUploadStore();
 
   useEffect(() => {
@@ -53,16 +42,10 @@ const UploadTask: React.FC<UploadTaskProps> = ({
       extra={
         <Space size="middle">
           <IndexedDBSwitch />
-          <UploadButton />
         </Space>
       }
     >
-      <FileSelector
-        accept={accept}
-        multiple={multiple}
-        maxSize={maxSize}
-        maxCount={maxCount}
-      />
+      <FileSelector accept={accept} multiple={multiple} maxSize={maxSize} />
 
       <FileListPanel />
 

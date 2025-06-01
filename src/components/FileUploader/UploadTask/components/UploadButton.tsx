@@ -7,6 +7,7 @@ import {
   DisconnectOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
+  ReloadOutlined,
   StopOutlined,
   WifiOutlined,
 } from "@ant-design/icons";
@@ -24,7 +25,28 @@ import { UploadStatus } from "../types/upload";
 import { useNetworkType } from "../hooks/useNetworkType";
 import { useUploadStore } from "../store/uploadStore";
 
-const UploadButton: React.FC = () => {
+// 合并FileListToolbar的属性
+interface UploadButtonProps {
+  // FileListToolbar属性
+  hasWaitingFiles?: boolean;
+  hasUploadingFiles?: boolean;
+  hasCompletedFiles?: boolean;
+  failedFilesCount?: number;
+  onUploadAll?: () => void;
+  onRetryAllFailed?: () => void;
+  onClearCompleted?: () => void;
+}
+
+const UploadButton: React.FC<UploadButtonProps> = ({
+  // FileListToolbar属性，设置默认值
+  hasWaitingFiles = false,
+  hasUploadingFiles = false,
+  hasCompletedFiles = false,
+  failedFilesCount = 0,
+  onUploadAll,
+  onRetryAllFailed,
+  onClearCompleted,
+}) => {
   const [queuePaused, setQueuePaused] = useState<boolean>(false);
   const uploadFiles = useUploadStore((state) => state.uploadFiles);
   const removeFile = useUploadStore((state) => state.removeFile);
@@ -224,80 +246,123 @@ const UploadButton: React.FC = () => {
         />
       )}
 
-      <Space wrap>
-        <Button
-          type="primary"
-          icon={<CloudUploadOutlined />}
-          onClick={handleUpload}
-          disabled={pendingFiles.length === 0 || isOffline}
-        >
-          上传文件 {pendingFiles.length > 0 ? `(${pendingFiles.length})` : ""}
-        </Button>
-
-        <Button
-          icon={queuePaused ? <PlayCircleOutlined /> : <PauseCircleOutlined />}
-          onClick={toggleQueuePause}
-          disabled={uploadingFiles.length === 0 || isOffline}
-          type={queuePaused ? "primary" : "default"}
-        >
-          {queuePaused ? "恢复上传" : "暂停上传"}
-        </Button>
-
-        <Button
-          danger
-          icon={<StopOutlined />}
-          onClick={handleStopAllUploads}
-          disabled={uploadingFiles.length === 0 || isOffline}
-        >
-          中断上传
-        </Button>
-
-        {errorFiles.length > 0 && (
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+        {/* 主上传按钮组 */}
+        <Space wrap>
           <Button
             type="primary"
-            danger
-            onClick={handleRetryAllFailed}
-            disabled={isOffline}
+            icon={<CloudUploadOutlined />}
+            onClick={handleUpload}
+            disabled={pendingFiles.length === 0 || isOffline}
           >
-            全部重试 ({errorFiles.length})
+            上传文件 {pendingFiles.length > 0 ? `(${pendingFiles.length})` : ""}
           </Button>
-        )}
 
-        <Button
-          danger
-          icon={<DeleteOutlined />}
-          onClick={handleClearQueue}
-          disabled={uploadFiles.length === 0 || uploadingFiles.length > 0}
-        >
-          清空队列
-        </Button>
-
-        <Tooltip
-          title={`网络状态: ${getNetworkTypeDisplay()}
-          ${
-            !isOffline
-              ? `切片大小: ${(chunkSize / (1024 * 1024)).toFixed(1)}MB
-          文件并发: ${fileConcurrency}
-          分片并发: ${chunkConcurrency}`
-              : "网络已断开，无法上传文件"
-          }`}
-        >
-          <Badge
-            count={
-              isOffline ? (
-                <DisconnectOutlined style={{ color: "#f5222d" }} />
-              ) : (
-                <WifiOutlined style={{ color: getNetworkStatusColor() }} />
-              )
+          <Button
+            icon={
+              queuePaused ? <PlayCircleOutlined /> : <PauseCircleOutlined />
             }
-            size="small"
+            onClick={toggleQueuePause}
+            disabled={uploadingFiles.length === 0 || isOffline}
+            type={queuePaused ? "primary" : "default"}
           >
-            <Button type="text" danger={isOffline}>
-              {getNetworkTypeDisplay()}
+            {queuePaused ? "恢复上传" : "暂停上传"}
+          </Button>
+
+          <Button
+            danger
+            icon={<StopOutlined />}
+            onClick={handleStopAllUploads}
+            disabled={uploadingFiles.length === 0 || isOffline}
+          >
+            中断上传
+          </Button>
+
+          {errorFiles.length > 0 && (
+            <Button
+              type="primary"
+              danger
+              onClick={handleRetryAllFailed}
+              disabled={isOffline}
+            >
+              全部重试 ({errorFiles.length})
             </Button>
-          </Badge>
-        </Tooltip>
-      </Space>
+          )}
+
+          <Button
+            danger
+            icon={<DeleteOutlined />}
+            onClick={handleClearQueue}
+            disabled={uploadFiles.length === 0 || uploadingFiles.length > 0}
+          >
+            清空队列
+          </Button>
+
+          <Tooltip
+            title={`网络状态: ${getNetworkTypeDisplay()}
+            ${
+              !isOffline
+                ? `切片大小: ${(chunkSize / (1024 * 1024)).toFixed(1)}MB
+            文件并发: ${fileConcurrency}
+            分片并发: ${chunkConcurrency}`
+                : "网络已断开，无法上传文件"
+            }`}
+          >
+            <Badge
+              count={
+                isOffline ? (
+                  <DisconnectOutlined style={{ color: "#f5222d" }} />
+                ) : (
+                  <WifiOutlined style={{ color: getNetworkStatusColor() }} />
+                )
+              }
+              size="small"
+            >
+              <Button type="text" danger={isOffline}>
+                {getNetworkTypeDisplay()}
+              </Button>
+            </Badge>
+          </Tooltip>
+        </Space>
+
+        {/* 合并FileListToolbar的按钮 */}
+        <Space>
+          {hasWaitingFiles && (
+            <Button
+              type="primary"
+              onClick={onUploadAll}
+              size="small"
+              disabled={hasUploadingFiles || isOffline}
+              style={{ position: "relative", zIndex: 2 }}
+            >
+              全部上传
+            </Button>
+          )}
+          {failedFilesCount > 0 && (
+            <Button
+              type="link"
+              icon={<ReloadOutlined />}
+              onClick={onRetryAllFailed}
+              size="small"
+              disabled={hasUploadingFiles || isOffline}
+              style={{ position: "relative", zIndex: 2 }}
+            >
+              全部重试 ({failedFilesCount})
+            </Button>
+          )}
+          {hasCompletedFiles && (
+            <Button
+              type="link"
+              onClick={onClearCompleted}
+              size="small"
+              disabled={hasUploadingFiles}
+              style={{ position: "relative", zIndex: 2 }}
+            >
+              清除已完成
+            </Button>
+          )}
+        </Space>
+      </div>
     </>
   );
 };

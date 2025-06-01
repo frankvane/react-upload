@@ -19,8 +19,8 @@ import {
   useAutoPauseQueueOnNetworkChange,
 } from "../services/uploadService";
 
-import FileListToolbar from "./FileListToolbar";
 import { Table } from "antd";
+import UploadButton from "./UploadButton";
 import type { UploadFile } from "../store/uploadStore";
 import { UploadStatus } from "../types/upload";
 import { createFileListColumns } from "./FileListColumns";
@@ -384,7 +384,7 @@ const FileListPanel: React.FC = () => {
         <span style={{ color: "#888", fontSize: 13, marginLeft: 16 }}>
           本地缓存占用：{(cacheSize / (1024 * 1024)).toFixed(2)} MB
         </span>
-        <FileListToolbar
+        <UploadButton
           hasWaitingFiles={hasWaitingFiles}
           hasUploadingFiles={hasUploadingFiles}
           hasCompletedFiles={hasCompletedFiles}
