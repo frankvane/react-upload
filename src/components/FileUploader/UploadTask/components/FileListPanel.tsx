@@ -9,7 +9,7 @@ import type {
   TableCurrentDataSource,
   TablePaginationConfig,
 } from "antd/es/table/interface";
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   addFileToQueue,
   pauseFile,
@@ -32,6 +32,15 @@ import { useUploadStore } from "../store/uploadStore";
 
 const FileListPanel: React.FC = () => {
   useAutoPauseQueueOnNetworkChange();
+
+  // 添加分页配置
+  const [pagination, setPagination] = useState<TablePaginationConfig>({
+    current: 1,
+    pageSize: 2, // 默认每页显示10条
+    showSizeChanger: true,
+    pageSizeOptions: ["2", "10", "20", "50", "100"],
+    showTotal: (total) => `共 ${total} 条记录`,
+  });
 
   // 使用选择器函数分别获取状态和动作，避免不必要的重新渲染
   const uploadFiles = useUploadStore((state) => state.uploadFiles);
@@ -117,14 +126,18 @@ const FileListPanel: React.FC = () => {
     }
   }, [sortedFiles]);
 
-  // 处理表格排序变化
+  // 处理表格排序和分页变化
   const handleTableChange = (
-    _pagination: TablePaginationConfig,
+    paginationConfig: TablePaginationConfig,
     _filters: Record<string, FilterValue | null>,
     sorter: SorterResult<UploadFile> | SorterResult<UploadFile>[],
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _extra: TableCurrentDataSource<UploadFile>
   ) => {
+    // 更新分页配置
+    setPagination(paginationConfig);
+
+    // 更新排序状态
     const sorterResult = Array.isArray(sorter) ? sorter[0] : sorter;
     setSortState({
       order:
@@ -278,10 +291,9 @@ const FileListPanel: React.FC = () => {
           dataSource={sortedFiles}
           columns={columns}
           rowKey="id"
-          pagination={false}
+          pagination={pagination}
           size="middle"
           scroll={{ y: tableHeight }}
-          virtual
           rowClassName={(_, index) =>
             index % 2 === 0 ? "table-row-light" : "table-row-dark"
           }

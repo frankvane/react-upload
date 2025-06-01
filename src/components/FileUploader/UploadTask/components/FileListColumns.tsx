@@ -1,6 +1,9 @@
-import { Button, Progress, Space, Tooltip } from "antd";
+import { Button, Space, Tooltip } from "antd";
 import {
+  CheckCircleFilled,
+  CloseCircleFilled,
   DeleteOutlined,
+  LoadingOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
@@ -8,10 +11,55 @@ import {
 } from "@ant-design/icons";
 
 import { ByteConvert } from "../services/utils";
+import React from "react";
 import type { SortOrder } from "antd/es/table/interface";
 import { StatusTagWithTooltip } from "./StatusTag";
 import type { UploadFile } from "../store/uploadStore";
 import { UploadStatus } from "../types/upload";
+
+/**
+ * 简单的百分比显示组件，替代Progress组件以提高性能
+ */
+const PercentDisplay = React.memo(
+  ({
+    percent,
+    status,
+  }: {
+    percent: number;
+    status: "success" | "error" | "active" | "normal";
+  }) => {
+    // 保证百分比是整数
+    const displayPercent = Math.round(percent);
+
+    // 根据状态设置不同的颜色和图标
+    let color = "#1890ff"; // 默认蓝色
+    let icon = null;
+
+    switch (status) {
+      case "success":
+        color = "#52c41a"; // 绿色
+        icon = <CheckCircleFilled style={{ marginRight: 5 }} />;
+        break;
+      case "error":
+        color = "#ff4d4f"; // 红色
+        icon = <CloseCircleFilled style={{ marginRight: 5 }} />;
+        break;
+      case "active":
+        color = "#1890ff"; // 蓝色
+        icon = <LoadingOutlined style={{ marginRight: 5 }} />;
+        break;
+      default:
+        color = "#1890ff"; // 默认蓝色
+    }
+
+    return (
+      <div style={{ color }}>
+        {icon}
+        {displayPercent}%
+      </div>
+    );
+  }
+);
 
 /**
  * 创建文件列表的表格列配置
@@ -70,8 +118,7 @@ export const createFileListColumns = (handlers: {
       title: "状态",
       dataIndex: "status",
       key: "status",
-      sorter: true,
-      sortDirections: ["ascend", "descend"] as SortOrder[],
+      sorter: false,
       render: (status: UploadStatus, record: UploadFile) => (
         <StatusTagWithTooltip
           status={status}
@@ -84,41 +131,33 @@ export const createFileListColumns = (handlers: {
       title: "进度",
       key: "progress",
       dataIndex: "progress",
-      sorter: true,
+      sorter: false,
       sortDirections: ["ascend", "descend"] as SortOrder[],
       render: (_: unknown, record: UploadFile) => {
         if (
           record.status === UploadStatus.DONE ||
           record.status === UploadStatus.INSTANT
         ) {
-          return <Progress percent={100} size="small" status="success" />;
+          return <PercentDisplay percent={100} status="success" />;
         }
         if (
           record.status === UploadStatus.ERROR ||
           record.status === UploadStatus.MERGE_ERROR
         ) {
-          return (
-            <Progress
-              percent={record.progress}
-              size="small"
-              status="exception"
-            />
-          );
+          return <PercentDisplay percent={record.progress} status="error" />;
         }
         if (record.status === UploadStatus.CALCULATING) {
           return (
             <Tooltip title={`MD5计算进度: ${record.progress}%`}>
-              <Progress
-                percent={record.progress}
-                size="small"
-                strokeColor="#1890ff"
-                trailColor="#e6f7ff"
-                status="active"
-              />
+              <PercentDisplay percent={record.progress} status="active" />
             </Tooltip>
           );
         }
-        return <Progress percent={record.progress} size="small" />;
+        if (record.status === UploadStatus.UPLOADING) {
+          return <PercentDisplay percent={record.progress} status="active" />;
+        }
+        // 其他状态
+        return <PercentDisplay percent={record.progress} status="normal" />;
       },
       width: "15%",
     },
