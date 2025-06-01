@@ -1,8 +1,7 @@
-import { Alert, Button, Progress, Upload } from "antd";
-import React, { useState } from "react";
+import { Alert, Button, Progress } from "antd";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 
 import { UploadOutlined } from "@ant-design/icons";
-import type { UploadProps } from "antd";
 import { addFileToQueue } from "../services/uploadService";
 import { message } from "antd";
 import { processFileWithWorker } from "../utils/fileUtils";
@@ -13,30 +12,37 @@ interface FileSelectorProps {
   accept?: string;
   multiple?: boolean;
   maxSize?: number; // 单位：MB
-  maxCount?: number;
   autoUpload?: boolean; // 是否自动上传
+}
+
+interface ProcessingStats {
+  total: number;
+  processed: number;
+  success: number;
+  failed: number;
+  oversized: number;
+  startTime: number;
+  endTime?: number;
+  totalTime?: number;
 }
 
 const FileSelector: React.FC<FileSelectorProps> = ({
   accept = "*",
   multiple = true,
   maxSize = 1024, // 默认最大1GB
-  maxCount,
   autoUpload = false, // 默认不自动上传
 }) => {
   const [dragging, setDragging] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState(0);
-  const [processingStats, setProcessingStats] = useState<{
-    total: number;
-    processed: number;
-    success: number;
-    failed: number;
-    oversized: number;
-    startTime: number;
-    endTime?: number;
-    totalTime?: number;
-  } | null>(null);
+  const [processingStats, setProcessingStats] =
+    useState<ProcessingStats | null>(null);
+
+  // 使用refs来跟踪处理状态，避免频繁的状态更新
+  const statsRef = useRef<ProcessingStats | null>(null);
+  const progressRef = useRef<number>(0);
+  const timerRef = useRef<number | null>(null);
+  const isProcessingRef = useRef<boolean>(false);
 
   // 使用网络状态 hook 获取当前网络状态和推荐的上传参数
   const { networkType, chunkSize, fileConcurrency } = useNetworkType();
@@ -47,232 +53,276 @@ const FileSelector: React.FC<FileSelectorProps> = ({
   const addFile = useUploadStore((state) => state.addFile);
   const useIndexedDB = useUploadStore((state) => state.useIndexedDB);
 
-  const handleFileSelect = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    if (processing) return;
+  // 文件输入引用
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // 检查网络状态，如果是离线状态，提示用户并继续处理（但不会自动上传）
-    if (isOffline && autoUpload) {
-      message.warning("当前处于离线状态，文件将保存在本地但不会自动上传");
+  // 定期将ref中的数据同步到state中，避免频繁更新
+  useEffect(() => {
+    return () => {
+      // 组件卸载时清理定时器
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, []);
+
+  // 更新UI状态的函数，由定时器调用
+  const updateUIState = useCallback(() => {
+    if (!isProcessingRef.current) return;
+
+    // 只有当数据变化时才更新状态，减少不必要的渲染
+    if (statsRef.current && progressRef.current !== processingProgress) {
+      setProcessingProgress(progressRef.current);
     }
 
-    setProcessing(true);
-    const fileArray = Array.from(files);
-    const maxSizeBytes = maxSize * 1024 * 1024;
+    if (statsRef.current && statsRef.current !== processingStats) {
+      setProcessingStats({ ...statsRef.current });
+    }
+  }, [processingProgress, processingStats]);
 
-    // 检查文件大小
-    const validFiles = fileArray.filter((file) => {
-      if (file.size > maxSizeBytes) {
-        return false; // 超过大小限制
+  // 处理文件选择
+  const handleFileSelect = useCallback(
+    async (files: FileList | null) => {
+      if (!files || files.length === 0) return;
+      if (isProcessingRef.current) return;
+
+      // 标记为处理中
+      isProcessingRef.current = true;
+      setProcessing(true);
+
+      // 检查网络状态，如果是离线状态，提示用户并继续处理（但不会自动上传）
+      if (isOffline && autoUpload) {
+        message.warning("当前处于离线状态，文件将保存在本地但不会自动上传");
       }
-      return true;
-    });
 
-    if (validFiles.length === 0) {
-      // 不显示 message，只更新统计信息
-      setProcessingStats({
+      const fileArray = Array.from(files);
+      const maxSizeBytes = maxSize * 1024 * 1024;
+
+      // 检查文件大小
+      const validFiles = fileArray.filter((file) => file.size <= maxSizeBytes);
+      const oversizedCount = fileArray.length - validFiles.length;
+
+      // 初始化处理统计信息
+      const startTime = Date.now();
+      const initialStats: ProcessingStats = {
         total: fileArray.length,
-        processed: fileArray.length,
+        processed: 0,
         success: 0,
         failed: 0,
-        oversized: fileArray.length,
-        startTime: Date.now(),
-        endTime: Date.now(),
-        totalTime: 0,
-      });
-      setProcessingProgress(100);
+        oversized: oversizedCount,
+        startTime,
+      };
 
-      // 3秒后自动重置状态
-      setTimeout(() => {
-        setProcessing(false);
-        setProcessingProgress(0);
-        setProcessingStats(null);
-      }, 3000);
-
-      return;
-    }
-
-    // 初始化处理统计信息
-    const startTime = Date.now();
-    setProcessingStats({
-      total: fileArray.length,
-      processed: 0,
-      success: 0,
-      failed: 0,
-      oversized: fileArray.length - validFiles.length,
-      startTime,
-    });
-    setProcessingProgress(0);
-
-    const failedFiles: string[] = [];
-    const successFileIds: string[] = [];
-
-    try {
-      // 使用 Promise.all 并行处理所有文件
-      const processPromises = validFiles.map(async (file, index) => {
-        try {
-          // 先使用 Web Worker 处理文件并计算 MD5
-          // 使用当前网络状态推荐的切片大小，并传递IndexedDB设置
-          const meta = await processFileWithWorker(
-            file,
-            chunkSize,
-            useIndexedDB
-          );
-
-          // 使用 MD5 作为文件 ID 添加到 store
-          const fileId = addFile(file, meta.key);
-
-          // 将成功的文件ID添加到列表中
-          successFileIds.push(fileId);
-
-          // 更新进度和统计信息
-          setProcessingStats((prev) => {
-            if (!prev) return prev;
-            return {
-              ...prev,
-              processed: prev.processed + 1,
-              success: prev.success + 1,
-            };
-          });
-          setProcessingProgress(
-            Math.floor(((index + 1) / validFiles.length) * 100)
-          );
-
-          // 返回文件 ID
-          return fileId;
-        } catch (error: any) {
-          console.error(`处理文件 ${file.name} 失败:`, error);
-          failedFiles.push(file.name);
-
-          // 更新统计信息
-          setProcessingStats((prev) => {
-            if (!prev) return prev;
-            return {
-              ...prev,
-              processed: prev.processed + 1,
-              failed: prev.failed + 1,
-            };
-          });
-          setProcessingProgress(
-            Math.floor(((index + 1) / validFiles.length) * 100)
-          );
-
-          return null;
-        }
-      });
-
-      // 等待所有文件处理完成
-      await Promise.all(processPromises);
-
-      // 计算总处理时间
-      const endTime = Date.now();
-      const totalTime = (endTime - startTime) / 1000;
-
-      // 更新最终统计信息
-      setProcessingStats((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          endTime,
-          totalTime,
-        };
-      });
-
-      // 如果设置了自动上传且网络正常，则添加到上传队列
-      if (autoUpload && successFileIds.length > 0 && !isOffline) {
-        // 创建一个延迟添加的函数，避免同时添加太多文件到队列造成阻塞
-        const autoUploadWithDelay = async () => {
-          // 将文件添加到上传队列，每个文件间隔100毫秒添加
-          for (let i = 0; i < successFileIds.length; i++) {
-            const fileId = successFileIds[i];
-            addFileToQueue(fileId, fileConcurrency);
-
-            // 每添加一个文件，等待100毫秒，避免过度阻塞
-            if (i < successFileIds.length - 1) {
-              await new Promise((resolve) => setTimeout(resolve, 100));
-            }
-          }
+      // 如果没有有效文件，直接完成处理
+      if (validFiles.length === 0) {
+        const completeStats = {
+          ...initialStats,
+          processed: fileArray.length,
+          endTime: Date.now(),
+          totalTime: 0,
         };
 
-        // 执行自动上传
-        autoUploadWithDelay();
-      } else if (autoUpload && isOffline && successFileIds.length > 0) {
-        message.info(
-          `已添加 ${successFileIds.length} 个文件，网络恢复后可手动上传`
-        );
+        statsRef.current = completeStats;
+        progressRef.current = 100;
+
+        // 更新UI
+        setProcessingStats(completeStats);
+        setProcessingProgress(100);
+
+        // 3秒后重置状态
+        setTimeout(() => {
+          setProcessing(false);
+          setProcessingProgress(0);
+          setProcessingStats(null);
+          statsRef.current = null;
+          progressRef.current = 0;
+          isProcessingRef.current = false;
+        }, 3000);
+
+        return;
       }
 
-      // 3秒后自动重置状态
+      // 设置初始状态
+      statsRef.current = initialStats;
+      progressRef.current = 0;
+
+      // 更新UI状态
+      setProcessingStats(initialStats);
+      setProcessingProgress(0);
+
+      // 设置定时器，定期更新UI状态
+      timerRef.current = setInterval(updateUIState, 200);
+
+      const failedFiles: string[] = [];
+      const successFileIds: string[] = [];
+
+      try {
+        // 处理每个文件
+        for (let i = 0; i < validFiles.length; i++) {
+          const file = validFiles[i];
+
+          try {
+            // 处理文件并计算MD5
+            const meta = await processFileWithWorker(
+              file,
+              chunkSize,
+              useIndexedDB
+            );
+
+            // 添加到store
+            const fileId = addFile(file, meta.key);
+            successFileIds.push(fileId);
+
+            // 更新统计信息
+            if (statsRef.current) {
+              statsRef.current.processed++;
+              statsRef.current.success++;
+            }
+          } catch (error) {
+            console.error(`处理文件 ${file.name} 失败:`, error);
+            failedFiles.push(file.name);
+
+            // 更新统计信息
+            if (statsRef.current) {
+              statsRef.current.processed++;
+              statsRef.current.failed++;
+            }
+          }
+
+          // 更新进度
+          progressRef.current = Math.floor(((i + 1) / validFiles.length) * 100);
+        }
+
+        // 处理完成，更新最终统计信息
+        const endTime = Date.now();
+        if (statsRef.current) {
+          statsRef.current.endTime = endTime;
+          statsRef.current.totalTime = (endTime - startTime) / 1000;
+        }
+
+        progressRef.current = 100;
+
+        // 清除定时器
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
+
+        // 最后一次更新UI
+        updateUIState();
+
+        // 如果设置了自动上传且网络正常，则添加到上传队列
+        if (autoUpload && successFileIds.length > 0 && !isOffline) {
+          // 创建一个延迟添加的函数，避免同时添加太多文件到队列造成阻塞
+          const autoUploadWithDelay = async () => {
+            // 将文件添加到上传队列，每个文件间隔100毫秒添加
+            for (let i = 0; i < successFileIds.length; i++) {
+              const fileId = successFileIds[i];
+              addFileToQueue(fileId, fileConcurrency);
+
+              // 每添加一个文件，等待100毫秒，避免过度阻塞
+              if (i < successFileIds.length - 1) {
+                await new Promise((resolve) => setTimeout(resolve, 100));
+              }
+            }
+          };
+
+          // 执行自动上传
+          autoUploadWithDelay();
+        } else if (autoUpload && isOffline && successFileIds.length > 0) {
+          message.info(
+            `已添加 ${successFileIds.length} 个文件，网络恢复后可手动上传`
+          );
+        }
+      } catch (error) {
+        console.error("处理文件时发生错误:", error);
+
+        // 更新错误状态
+        const endTime = Date.now();
+        if (statsRef.current) {
+          statsRef.current.endTime = endTime;
+          statsRef.current.totalTime = (endTime - startTime) / 1000;
+        }
+
+        // 清除定时器
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
+
+        // 最后一次更新UI
+        updateUIState();
+      }
+
+      // 3秒后重置状态
       setTimeout(() => {
         setProcessing(false);
         setProcessingProgress(0);
         setProcessingStats(null);
+        statsRef.current = null;
+        progressRef.current = 0;
+        isProcessingRef.current = false;
       }, 3000);
-    } catch (error) {
-      console.error("处理文件时发生错误:", error);
-
-      // 更新统计信息为错误状态
-      const endTime = Date.now();
-      setProcessingStats((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          endTime,
-          totalTime: (endTime - prev.startTime) / 1000,
-        };
-      });
-
-      // 3秒后自动重置状态
-      setTimeout(() => {
-        setProcessing(false);
-        setProcessingProgress(0);
-        setProcessingStats(null);
-      }, 3000);
-    }
-  };
+    },
+    [
+      addFile,
+      autoUpload,
+      chunkSize,
+      fileConcurrency,
+      isOffline,
+      maxSize,
+      updateUIState,
+      useIndexedDB,
+    ]
+  );
 
   // 处理拖放事件
-  const handleDragEnter = (e: React.DragEvent) => {
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setDragging(true);
-  };
+  }, []);
 
-  const handleDragLeave = (e: React.DragEvent) => {
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setDragging(false);
-  };
+  }, []);
 
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-  };
+  }, []);
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragging(false);
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDragging(false);
 
-    const files = e.dataTransfer.files;
-    handleFileSelect(files);
-  };
-
-  // 使用 Ant Design 的 Upload 组件
-  const uploadProps: UploadProps = {
-    beforeUpload: (file) => {
-      handleFileSelect([file] as unknown as FileList);
-      return false; // 阻止 Upload 组件默认上传行为
+      const files = e.dataTransfer.files;
+      handleFileSelect(files);
     },
-    multiple,
-    accept,
-    showUploadList: false,
-    maxCount,
-    disabled: processing,
-  };
+    [handleFileSelect]
+  );
+
+  // 处理文件选择
+  const handleFileInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (files && files.length > 0) {
+        handleFileSelect(files);
+      }
+      // 重置文件输入，以便能够再次选择相同的文件
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    },
+    [handleFileSelect]
+  );
 
   // 格式化处理状态文本
-  const getProcessingStatusText = () => {
+  const getProcessingStatusText = useCallback(() => {
     if (!processingStats) return "正在准备处理文件...";
 
     const {
@@ -298,7 +348,7 @@ const FileSelector: React.FC<FileSelectorProps> = ({
       processed > 0 ? (processed / elapsedSeconds).toFixed(1) : "0";
 
     return `正在处理文件 ${processed}/${total}，成功: ${success}，失败: ${failed}，超过大小限制: ${oversized}，速度: ${filesPerSecond} 文件/秒`;
-  };
+  }, [processingStats]);
 
   return (
     <div
@@ -321,17 +371,27 @@ const FileSelector: React.FC<FileSelectorProps> = ({
         />
       )}
 
-      <Upload {...uploadProps}>
-        <Button
-          icon={<UploadOutlined />}
-          size="large"
-          type="primary"
-          loading={processing}
-          disabled={processing && isOffline && autoUpload}
-        >
-          选择文件
-        </Button>
-      </Upload>
+      {/* 隐藏的文件输入 */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple={multiple}
+        accept={accept}
+        onChange={handleFileInputChange}
+        style={{ display: "none" }}
+      />
+
+      {/* 自定义上传按钮 */}
+      <Button
+        icon={<UploadOutlined />}
+        size="large"
+        type="primary"
+        loading={processing}
+        disabled={processing && isOffline && autoUpload}
+        onClick={() => fileInputRef.current?.click()}
+      >
+        选择文件
+      </Button>
 
       {processing && (
         <div style={{ width: "100%", marginTop: "10px" }}>
