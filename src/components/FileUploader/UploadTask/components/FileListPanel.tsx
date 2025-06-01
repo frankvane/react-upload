@@ -45,9 +45,13 @@ const FileListPanel: React.FC = () => {
 
   // 使用refs防止无限循环更新
   const paginationRef = useRef(pagination);
-  const autoPageChangeRef = useRef(false); // 标记是否处于自动翻页状态
-  const processingPageChangeRef = useRef(false); // 标记是否正在处理页面更改
-  const prevFilesCountRef = useRef<number>(0); // 追踪文件数量变化
+  // 合并自动跳页锁
+  const autoPagingLockRef = useRef(false); // 标记自动跳页锁
+  // 合并文件数量和上次已完成数
+  const prevFileMetaRef = useRef<{ count: number; finished: number }>({
+    count: 0,
+    finished: 0,
+  });
 
   // 当pagination状态更新时同步到ref
   useEffect(() => {
@@ -70,8 +74,7 @@ const FileListPanel: React.FC = () => {
     useUploadFileStatus(sortedFiles);
 
   // 批量上传结果汇总通知
-  const prevUploadCountRef = useRef<number>(0);
-  const notifiedRef = useRef<boolean>(false);
+  const [notified, setNotified] = useState(false);
   useEffect(() => {
     const total = sortedFiles.length;
     const finished = sortedFiles.filter(
@@ -85,8 +88,8 @@ const FileListPanel: React.FC = () => {
     if (
       total > 0 &&
       finished === total &&
-      !notifiedRef.current &&
-      total !== prevUploadCountRef.current
+      !notified &&
+      total !== prevFileMetaRef.current.finished
     ) {
       const successCount = sortedFiles.filter(
         (f) =>
@@ -104,11 +107,11 @@ const FileListPanel: React.FC = () => {
         duration: 4,
       });
 
-      notifiedRef.current = true;
-      prevUploadCountRef.current = total;
+      setNotified(true);
+      prevFileMetaRef.current.finished = total;
     }
     if (finished < total) {
-      notifiedRef.current = false;
+      setNotified(false);
     }
   }, [sortedFiles]);
 
@@ -141,7 +144,7 @@ const FileListPanel: React.FC = () => {
   // 在组件中添加对文件添加的监听
   useEffect(() => {
     // 如果文件数量增加，说明有新文件被添加，将分页重置到第1页
-    if (uploadFiles.length > prevFilesCountRef.current) {
+    if (uploadFiles.length > prevFileMetaRef.current.count) {
       // 重置到第1页
       setPagination((prev) => {
         const newPagination = {
@@ -154,26 +157,21 @@ const FileListPanel: React.FC = () => {
     }
 
     // 更新文件数量引用
-    prevFilesCountRef.current = uploadFiles.length;
+    prevFileMetaRef.current.count = uploadFiles.length;
   }, [uploadFiles.length]);
 
   // 标记用户是否手动切页，禁止自动跳页
   const [userPaging, setUserPaging] = useState(false);
 
-  // 跳到第一页方法，供UploadButton调用
-  const jumpToFirstPage = () => {
-    setPagination((prev) => ({ ...prev, current: 1 }));
-    setUserPaging(false); // 恢复后允许自动翻页
+  // 跳到指定页方法，供UploadButton调用
+  const jumpToPage = (page: number) => {
+    setPagination((prev) => ({ ...prev, current: page }));
+    setUserPaging(false);
   };
 
-  // 修改自动翻页逻辑，支持INSTANT和DONE状态
+  // 修改自动翻页逻辑，支持INSTANT和DONE状态，持续监听，直到所有页都完成
   useEffect(() => {
-    if (
-      processingPageChangeRef.current ||
-      autoPageChangeRef.current ||
-      userPaging
-    )
-      return;
+    if (autoPagingLockRef.current || userPaging) return;
     const { current = 1, pageSize = 10 } = paginationRef.current;
     const startIndex = (current - 1) * pageSize;
     const endIndex = current * pageSize;
@@ -192,9 +190,7 @@ const FileListPanel: React.FC = () => {
       );
     const hasNextPage = sortedFiles.length > endIndex;
     if (allCurrentPageDone && hasNextPage) {
-      // 跳到下一页
-      autoPageChangeRef.current = true;
-      processingPageChangeRef.current = true;
+      autoPagingLockRef.current = true;
       setTimeout(() => {
         setPagination((prev) => {
           const newPagination = { ...prev, current: current + 1 };
@@ -202,31 +198,7 @@ const FileListPanel: React.FC = () => {
           return newPagination;
         });
         setTimeout(() => {
-          processingPageChangeRef.current = false;
-          autoPageChangeRef.current = false;
-        }, 300);
-      }, 100);
-    } else if (
-      allCurrentPageDone &&
-      !hasNextPage &&
-      current !== Math.ceil(sortedFiles.length / pageSize)
-    ) {
-      // 跳到最后一页
-      autoPageChangeRef.current = true;
-      processingPageChangeRef.current = true;
-      setTimeout(() => {
-        setPagination((prev) => {
-          const lastPage = Math.max(
-            1,
-            Math.ceil(sortedFiles.length / pageSize)
-          );
-          const newPagination = { ...prev, current: lastPage };
-          paginationRef.current = newPagination;
-          return newPagination;
-        });
-        setTimeout(() => {
-          processingPageChangeRef.current = false;
-          autoPageChangeRef.current = false;
+          autoPagingLockRef.current = false;
         }, 300);
       }, 100);
     }
@@ -439,7 +411,8 @@ const FileListPanel: React.FC = () => {
           onUploadAll={handleUploadAll}
           onRetryAllFailed={handleRetryAllFailed}
           onClearCompleted={handleClearCompleted}
-          onJumpToFirstPage={jumpToFirstPage}
+          onJumpToPage={jumpToPage}
+          pageSize={pagination.pageSize || 5}
           sortedFiles={sortedFiles}
         />
       </div>

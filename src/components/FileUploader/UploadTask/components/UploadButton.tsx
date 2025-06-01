@@ -35,8 +35,9 @@ interface UploadButtonProps {
   onUploadAll?: () => void;
   onRetryAllFailed?: () => void;
   onClearCompleted?: () => void;
-  onJumpToFirstPage?: () => void;
+  onJumpToPage?: (page: number) => void;
   sortedFiles: UploadFile[];
+  pageSize: number;
 }
 
 const UploadButton: React.FC<UploadButtonProps> = ({
@@ -47,8 +48,9 @@ const UploadButton: React.FC<UploadButtonProps> = ({
   onUploadAll,
   onRetryAllFailed,
   onClearCompleted,
-  onJumpToFirstPage,
+  onJumpToPage,
   sortedFiles,
+  pageSize,
 }) => {
   // 上传状态管理
   const [queuePaused, setQueuePaused] = useState<boolean>(false);
@@ -190,17 +192,31 @@ const UploadButton: React.FC<UploadButtonProps> = ({
 
     // 顺序调度所有未完成文件，priority从大到小，保证第一个文件优先
     for (let i = 0; i < unfinishedFiles.length; i++) {
-      const fileId = unfinishedFiles[i].id;
-      resetFile(fileId);
-      addFileToQueue(fileId, unfinishedFiles.length - i, fileConcurrency);
+      const file = unfinishedFiles[i];
+      // 只对PAUSED、ERROR、MERGE_ERROR重置
+      if (
+        file.status === UploadStatus.PAUSED ||
+        file.status === UploadStatus.ERROR ||
+        file.status === UploadStatus.MERGE_ERROR
+      ) {
+        resetFile(file.id);
+      }
+      addFileToQueue(file.id, unfinishedFiles.length - i, fileConcurrency);
       if (i < unfinishedFiles.length - 1) {
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
     }
     setQueuePaused(false);
     message.success(`已恢复上传队列 (并发数: ${fileConcurrency})`);
-    if (typeof onJumpToFirstPage === "function") {
-      onJumpToFirstPage();
+
+    // 自动跳转到第一个未完成文件所在页
+    if (unfinishedFiles.length > 0) {
+      const firstUnfinishedId = unfinishedFiles[0].id;
+      const index = sortedFiles.findIndex((f) => f.id === firstUnfinishedId);
+      const targetPage = Math.floor(index / pageSize) + 1;
+      if (typeof onJumpToPage === "function") {
+        onJumpToPage(targetPage);
+      }
     }
   };
 
