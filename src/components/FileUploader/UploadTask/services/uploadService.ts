@@ -501,6 +501,23 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
       // 文件已存在，可以秒传
       updateFileStatus(fileId, UploadStatus.INSTANT, 100);
       console.log(`[上传完成] 文件 ${fileName} 秒传成功`);
+
+      // 秒传成功后，从IndexedDB中删除记录
+      try {
+        await dbService.removeFileMeta(fileHash);
+        console.log(
+          `[缓存清理] 秒传文件 ${fileName} (哈希: ${fileHash.substring(
+            0,
+            8
+          )}...) 的元数据已从 IndexedDB 中移除`
+        );
+      } catch (cleanupError) {
+        console.warn(
+          `[缓存警告] 清理秒传文件 ${fileName} 元数据失败:`,
+          cleanupError
+        );
+      }
+
       return;
     }
 
