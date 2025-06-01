@@ -386,6 +386,16 @@ export const processFileUpload = async (fileId: string): Promise<void> => {
   }
 
   try {
+    // 关键修复：如果是INSTANT或DONE，直接更新状态并返回
+    if (uploadFile.status === UploadStatus.INSTANT) {
+      updateFileStatus(fileId, UploadStatus.INSTANT, 100);
+      return;
+    }
+    if (uploadFile.status === UploadStatus.DONE) {
+      updateFileStatus(fileId, UploadStatus.DONE, 100);
+      return;
+    }
+
     // 更新状态为计算哈希中
     updateFileStatus(fileId, UploadStatus.CALCULATING, 0);
     console.log(`[DEBUG] 文件 ${fileId} 状态已更新为 CALCULATING`);
@@ -694,6 +704,14 @@ export const addFileToQueue = (
     file.status === UploadStatus.ERROR ||
     file.status === UploadStatus.MERGE_ERROR
   ) {
+    // 关键修复：如果是INSTANT，确保UI状态为DONE（或INSTANT），避免卡在CALCULATING
+    if (file.status === UploadStatus.INSTANT) {
+      updateFileStatus(fileId, UploadStatus.INSTANT, 100);
+      // 这里可以触发UI刷新（如有必要）
+    }
+    if (file.status === UploadStatus.DONE) {
+      updateFileStatus(fileId, UploadStatus.DONE, 100);
+    }
     console.log(`[DEBUG] 文件 ${fileId} 状态已完成/错误，不再添加到队列`);
     return;
   }
