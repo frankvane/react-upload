@@ -12,8 +12,10 @@ import type {
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   addFileToQueue,
+  getQueueStats,
   pauseFile,
   resumeFile,
+  resumeQueue,
   retryUpload,
   uploadFilesInSequence,
   useAutoPauseQueueOnNetworkChange,
@@ -257,10 +259,28 @@ const FileListPanel: React.FC = () => {
 
   const handleRetry = useCallback(
     (fileId: string) => {
+      console.log(`[DEBUG] 重试文件 ${fileId}`);
+
+      // 确保队列处于启动状态
+      const queueStats = getQueueStats();
+      if (queueStats.isPaused) {
+        console.log(`[DEBUG] 队列处于暂停状态，正在启动队列`);
+        resumeQueue();
+      }
+
       // 查找文件在当前排序列表中的位置
       const index = sortedFiles.findIndex((file) => file.id === fileId);
       const priority = index >= 0 ? 9999 - index : 0; // 优先级基于表格位置
+
+      console.log(`[DEBUG] 重试文件 ${fileId}，优先级: ${priority}`);
       retryUpload(fileId, priority);
+
+      // 确保文件状态被更新
+      setTimeout(() => {
+        const { uploadFiles } = useUploadStore.getState();
+        const file = uploadFiles.find((f) => f.id === fileId);
+        console.log(`[DEBUG] 重试后文件 ${fileId} 状态: ${file?.status}`);
+      }, 500);
     },
     [sortedFiles]
   );
@@ -288,6 +308,12 @@ const FileListPanel: React.FC = () => {
 
   // 批量上传所有等待中的文件
   const handleUploadAll = useCallback(() => {
+    // 确保队列处于启动状态
+    const queueStats = getQueueStats();
+    if (queueStats.isPaused) {
+      resumeQueue();
+    }
+
     // 确保从第一页开始上传
     setPagination((prev) => {
       const newPagination = {
@@ -318,11 +344,25 @@ const FileListPanel: React.FC = () => {
 
   // 重试所有失败的文件
   const handleRetryAllFailed = useCallback(() => {
+    console.log(`[DEBUG] 重试所有失败或已中断的文件`);
+
+    // 确保队列处于启动状态
+    const queueStats = getQueueStats();
+    if (queueStats.isPaused) {
+      console.log(`[DEBUG] 队列处于暂停状态，正在启动队列`);
+      resumeQueue();
+    }
+
     // 按照当前排序顺序重试失败的文件
     const failedFilesInOrder = sortedFiles.filter(
       (file) =>
         file.status === UploadStatus.ERROR ||
-        file.status === UploadStatus.MERGE_ERROR
+        file.status === UploadStatus.MERGE_ERROR ||
+        file.status === UploadStatus.ABORTED
+    );
+
+    console.log(
+      `[DEBUG] 找到 ${failedFilesInOrder.length} 个失败或已中断的文件需要重试`
     );
 
     // 获取文件ID数组
@@ -330,11 +370,14 @@ const FileListPanel: React.FC = () => {
 
     // 显示开始重试的消息
     if (fileIds.length > 0) {
-      message.success(`开始重试 ${fileIds.length} 个失败的文件`);
+      message.success(`开始重试 ${fileIds.length} 个失败或已中断的文件`);
+      console.log(`[DEBUG] 开始重试文件:`, fileIds);
+
       // 使用顺序上传功能
       uploadFilesInSequence(fileIds);
     } else {
-      message.warning("没有失败的文件需要重试");
+      message.warning("没有失败或已中断的文件需要重试");
+      console.log(`[DEBUG] 没有找到需要重试的文件`);
     }
   }, [sortedFiles]);
 

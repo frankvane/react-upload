@@ -16,6 +16,7 @@ import React, { useEffect, useState } from "react";
 import {
   addFileToQueue,
   clearQueue,
+  getQueueStats,
   pauseQueue,
   resumeQueue,
   stopAllUploads,
@@ -84,7 +85,8 @@ const UploadButton: React.FC<UploadButtonProps> = ({
   const errorFiles = uploadFiles.filter(
     (file) =>
       file.status === UploadStatus.ERROR ||
-      file.status === UploadStatus.MERGE_ERROR
+      file.status === UploadStatus.MERGE_ERROR ||
+      file.status === UploadStatus.ABORTED
   );
 
   // 处理上传按钮点击 - 合并上传文件和全部上传功能
@@ -150,9 +152,16 @@ const UploadButton: React.FC<UploadButtonProps> = ({
       return;
     }
 
-    stopAllUploads();
+    // 直接执行中断操作
+    const abortedFileIds = stopAllUploads();
     setQueuePaused(false); // 重置暂停状态
-    message.info("已中断所有上传任务");
+
+    // 显示中断成功的消息
+    if (abortedFileIds.length > 0) {
+      message.success(`已中断 ${abortedFileIds.length} 个上传任务`);
+    } else {
+      message.info("已中断所有上传任务");
+    }
   };
 
   // 清空队列
@@ -182,17 +191,27 @@ const UploadButton: React.FC<UploadButtonProps> = ({
       return;
     }
 
+    // 获取所有错误和中断状态的文件
+    const errorAndAbortedFiles = uploadFiles.filter(
+      (file) =>
+        file.status === UploadStatus.ERROR ||
+        file.status === UploadStatus.MERGE_ERROR ||
+        file.status === UploadStatus.ABORTED
+    );
+
     // 确定要重试的文件数量
-    const retryCount = onRetryAllFailed ? failedFilesCount : errorFiles.length;
+    const retryCount = onRetryAllFailed
+      ? failedFilesCount
+      : errorAndAbortedFiles.length;
 
     if (retryCount === 0) {
-      message.warning("没有失败的文件需要重试");
+      message.warning("没有失败或已中断的文件需要重试");
       return;
     }
 
     // 显示开始重试的消息
     message.success(
-      `开始重试 ${retryCount} 个失败的文件 (并发数: ${fileConcurrency})`
+      `开始重试 ${retryCount} 个失败或已中断的文件 (并发数: ${fileConcurrency})`
     );
 
     // 如果提供了onRetryAllFailed回调，优先使用它
@@ -203,14 +222,21 @@ const UploadButton: React.FC<UploadButtonProps> = ({
 
     // 否则使用原来的方式
     const retryFilesWithDelay = async () => {
-      for (let i = 0; i < errorFiles.length; i++) {
-        const file = errorFiles[i];
+      // 确保队列处于启动状态
+      const queueStats = getQueueStats();
+      if (queueStats.isPaused) {
+        resumeQueue(fileConcurrency);
+        setQueuePaused(false); // 更新UI状态
+      }
+
+      for (let i = 0; i < errorAndAbortedFiles.length; i++) {
+        const file = errorAndAbortedFiles[i];
         // 重置文件状态
         useUploadStore.getState().resetFile(file.id);
         // 添加到上传队列，并传递当前网络状态下的并发数
         addFileToQueue(file.id, fileConcurrency);
 
-        if (i < errorFiles.length - 1) {
+        if (i < errorAndAbortedFiles.length - 1) {
           await new Promise((resolve) => setTimeout(resolve, 100));
         }
       }
@@ -307,7 +333,7 @@ const UploadButton: React.FC<UploadButtonProps> = ({
 
           {/* 合并的重试按钮 */}
           {totalFailedCount > 0 && (
-            <Tooltip title="重试失败文件">
+            <Tooltip title="重试失败或已中断文件">
               <Button
                 type="primary"
                 danger

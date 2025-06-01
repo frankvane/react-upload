@@ -12,4 +12,5 @@ export enum UploadStatus {
   INSTANT = "instant",
   ERROR = "error",
   MERGE_ERROR = "merge-error",
+  ABORTED = "aborted",
 }

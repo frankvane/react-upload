@@ -146,6 +146,9 @@ export const createFileListColumns = (handlers: {
         ) {
           return <PercentDisplay percent={record.progress} status="error" />;
         }
+        if (record.status === UploadStatus.ABORTED) {
+          return <PercentDisplay percent={record.progress} status="error" />;
+        }
         if (record.status === UploadStatus.CALCULATING) {
           return (
             <Tooltip title={`MD5计算进度: ${record.progress}%`}>
@@ -206,15 +209,24 @@ export const createFileListColumns = (handlers: {
             </Button>
           )}
           {(record.status === UploadStatus.ERROR ||
-            record.status === UploadStatus.MERGE_ERROR) && (
-            <Button
-              type="link"
-              icon={<ReloadOutlined />}
-              onClick={() => handleRetry(record.id)}
-              size="small"
+            record.status === UploadStatus.MERGE_ERROR ||
+            record.status === UploadStatus.ABORTED) && (
+            <Tooltip
+              title={
+                record.status === UploadStatus.ABORTED
+                  ? "重试已中断文件"
+                  : "重试失败文件"
+              }
             >
-              重试
-            </Button>
+              <Button
+                type="link"
+                icon={<ReloadOutlined />}
+                onClick={() => handleRetry(record.id)}
+                size="small"
+              >
+                重试
+              </Button>
+            </Tooltip>
           )}
           <Button
             type="link"
