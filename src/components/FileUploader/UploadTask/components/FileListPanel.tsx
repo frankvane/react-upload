@@ -37,9 +37,9 @@ const FileListPanel: React.FC = () => {
   // 添加分页配置
   const [pagination, setPagination] = useState<TablePaginationConfig>({
     current: 1,
-    pageSize: 10, // 默认每页显示10条
+    pageSize: 5, // 默认每页显示10条
     showSizeChanger: true,
-    pageSizeOptions: ["10", "20", "50", "100"],
+    pageSizeOptions: ["5", "10", "20", "50"],
     showTotal: (total) => `共 ${total} 条记录`,
   });
 
@@ -166,7 +166,7 @@ const FileListPanel: React.FC = () => {
     setUserPaging(false); // 恢复后允许自动翻页
   };
 
-  // 修改自动翻页逻辑，只有在自动上传时且未手动切页才自动翻页
+  // 修改自动翻页逻辑，支持INSTANT和DONE状态
   useEffect(() => {
     if (
       processingPageChangeRef.current ||
@@ -174,7 +174,6 @@ const FileListPanel: React.FC = () => {
       userPaging
     )
       return;
-    if (!hasUploadingFiles) return;
     const { current = 1, pageSize = 10 } = paginationRef.current;
     const startIndex = (current - 1) * pageSize;
     const endIndex = current * pageSize;
@@ -183,41 +182,55 @@ const FileListPanel: React.FC = () => {
       startIndex,
       Math.min(endIndex, sortedFiles.length)
     );
-    const hasCurrentPageUploading = currentPageFiles.some(
-      (file) =>
-        file.status === UploadStatus.UPLOADING ||
-        file.status === UploadStatus.QUEUED ||
-        file.status === UploadStatus.CALCULATING
-    );
-    const hasNextPage = sortedFiles.length > endIndex;
-    if (!hasCurrentPageUploading && hasNextPage) {
-      const nextPageFiles = sortedFiles.slice(
-        endIndex,
-        Math.min(endIndex + pageSize, sortedFiles.length)
-      );
-      const hasNextPageUploadingFiles = nextPageFiles.some(
+    // 判断本页是否全部已完成（DONE或INSTANT）
+    const allCurrentPageDone =
+      currentPageFiles.length > 0 &&
+      currentPageFiles.every(
         (file) =>
-          file.status === UploadStatus.QUEUED ||
-          file.status === UploadStatus.UPLOADING ||
-          file.status === UploadStatus.CALCULATING
+          file.status === UploadStatus.DONE ||
+          file.status === UploadStatus.INSTANT
       );
-      if (hasNextPageUploadingFiles) {
-        autoPageChangeRef.current = true;
-        processingPageChangeRef.current = true;
+    const hasNextPage = sortedFiles.length > endIndex;
+    if (allCurrentPageDone && hasNextPage) {
+      // 跳到下一页
+      autoPageChangeRef.current = true;
+      processingPageChangeRef.current = true;
+      setTimeout(() => {
+        setPagination((prev) => {
+          const newPagination = { ...prev, current: current + 1 };
+          paginationRef.current = newPagination;
+          return newPagination;
+        });
         setTimeout(() => {
-          setPagination((prev) => {
-            const newPagination = { ...prev, current: current + 1 };
-            paginationRef.current = newPagination;
-            return newPagination;
-          });
-          setTimeout(() => {
-            processingPageChangeRef.current = false;
-            autoPageChangeRef.current = false;
-          }, 300);
-        }, 100);
-      }
+          processingPageChangeRef.current = false;
+          autoPageChangeRef.current = false;
+        }, 300);
+      }, 100);
+    } else if (
+      allCurrentPageDone &&
+      !hasNextPage &&
+      current !== Math.ceil(sortedFiles.length / pageSize)
+    ) {
+      // 跳到最后一页
+      autoPageChangeRef.current = true;
+      processingPageChangeRef.current = true;
+      setTimeout(() => {
+        setPagination((prev) => {
+          const lastPage = Math.max(
+            1,
+            Math.ceil(sortedFiles.length / pageSize)
+          );
+          const newPagination = { ...prev, current: lastPage };
+          paginationRef.current = newPagination;
+          return newPagination;
+        });
+        setTimeout(() => {
+          processingPageChangeRef.current = false;
+          autoPageChangeRef.current = false;
+        }, 300);
+      }, 100);
     }
-  }, [sortedFiles, hasUploadingFiles, userPaging]);
+  }, [sortedFiles, userPaging]);
 
   // 处理表格排序和分页变化
   const handleTableChange = (
