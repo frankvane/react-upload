@@ -171,8 +171,13 @@ const FileListPanel: React.FC = () => {
 
   // 修改自动翻页逻辑，支持INSTANT和DONE状态，持续监听，直到所有页都完成
   useEffect(() => {
-    if (autoPagingLockRef.current || userPaging) return;
-    const { current = 1, pageSize = 10 } = paginationRef.current;
+    if (autoPagingLockRef.current) {
+      // 如果锁被占用，但当前页不是跳页条件，立即释放锁
+      autoPagingLockRef.current = false;
+      return;
+    }
+    if (userPaging) return;
+    const { current = 1, pageSize = 5 } = pagination;
     const startIndex = (current - 1) * pageSize;
     const endIndex = current * pageSize;
     if (startIndex >= sortedFiles.length) return;
@@ -180,7 +185,6 @@ const FileListPanel: React.FC = () => {
       startIndex,
       Math.min(endIndex, sortedFiles.length)
     );
-    // 判断本页是否全部已完成（DONE或INSTANT）
     const allCurrentPageDone =
       currentPageFiles.length > 0 &&
       currentPageFiles.every(
@@ -191,18 +195,12 @@ const FileListPanel: React.FC = () => {
     const hasNextPage = sortedFiles.length > endIndex;
     if (allCurrentPageDone && hasNextPage) {
       autoPagingLockRef.current = true;
-      setTimeout(() => {
-        setPagination((prev) => {
-          const newPagination = { ...prev, current: current + 1 };
-          paginationRef.current = newPagination;
-          return newPagination;
-        });
-        setTimeout(() => {
-          autoPagingLockRef.current = false;
-        }, 300);
-      }, 100);
+      setPagination((prev) => ({
+        ...prev,
+        current: current + 1,
+      }));
     }
-  }, [sortedFiles, userPaging]);
+  }, [sortedFiles, userPaging, pagination.current]);
 
   // 处理表格排序和分页变化
   const handleTableChange = (
