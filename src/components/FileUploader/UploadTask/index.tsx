@@ -11,7 +11,6 @@ interface UploadTaskProps {
   accept?: string;
   multiple?: boolean;
   maxSize?: number;
-  useIndexedDB?: boolean; // 是否使用IndexedDB存储文件
 }
 
 const UploadTask: React.FC<UploadTaskProps> = ({
@@ -19,19 +18,17 @@ const UploadTask: React.FC<UploadTaskProps> = ({
   accept = "*",
   multiple = true,
   maxSize = 500,
-  useIndexedDB = false, // 默认禁用IndexedDB存储
 }) => {
-  const { setUseIndexedDB, initializeFromIndexedDB } = useUploadStore();
+  const initializeFromIndexedDB = useUploadStore(
+    (state) => state.initializeFromIndexedDB
+  );
+  const useIndexedDB = useUploadStore((state) => state.useIndexedDB);
 
   useEffect(() => {
-    // 设置是否使用IndexedDB
-    setUseIndexedDB(useIndexedDB);
-
-    // 如果启用了IndexedDB，则从中初始化文件列表
     if (useIndexedDB) {
       initializeFromIndexedDB();
     }
-  }, [useIndexedDB, setUseIndexedDB, initializeFromIndexedDB]);
+  }, [useIndexedDB, initializeFromIndexedDB]);
 
   return (
     <Card

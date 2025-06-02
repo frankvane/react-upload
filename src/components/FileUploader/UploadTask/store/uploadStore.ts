@@ -4,6 +4,7 @@ import { UploadStatus } from "../types/upload";
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 import { generateStableFileId } from "../utils/fileUtils";
+import { persist } from "zustand/middleware";
 
 // 保存一个全局的文件映射表，用于存储文件引用，但不放入zustand状态中
 // 这样可以在需要时获取文件，但不会增加状态的内存占用
@@ -31,7 +32,7 @@ export interface UploadFile {
 // 定义整个上传队列的状态结构
 interface UploadState {
   uploadFiles: UploadFile[]; // 待上传文件列表
-  useIndexedDB: boolean; // 是否使用IndexedDB存储文件
+  useIndexedDB: boolean; // 是否使用IndexedDB存储
   setUseIndexedDB: (value: boolean) => void; // 设置是否使用IndexedDB存储
   addFile: (file: File, md5?: string) => string; // 添加文件到队列，返回文件ID
   updateFileStatus: (
@@ -53,8 +54,8 @@ interface UploadState {
 
 // 创建 Zustand store
 export const useUploadStore = create<UploadState>()(
-  devtools(
-    (set) => ({
+  persist(
+    devtools((set) => ({
       uploadFiles: [],
       useIndexedDB: false, // 默认禁用IndexedDB存储
 
@@ -373,7 +374,10 @@ export const useUploadStore = create<UploadState>()(
           });
 
           // 自动重排order
-          const reordered = files.map((file, idx) => ({ ...file, order: idx }));
+          const reordered = files.map((file, idx) => ({
+            ...file,
+            order: idx,
+          }));
 
           // 更新 store 中的文件列表
           set(
@@ -392,7 +396,10 @@ export const useUploadStore = create<UploadState>()(
           console.error("从 IndexedDB 初始化文件列表失败:", error);
         }
       },
-    }),
-    { name: "UploadStore" }
+    })),
+    {
+      name: "upload-store-persist",
+      partialize: (state) => ({ useIndexedDB: state.useIndexedDB }),
+    }
   )
 );
