@@ -10,7 +10,7 @@ import {
   UploadOutlined,
 } from "@ant-design/icons";
 
-import { ByteConvert } from "../services/utils";
+import { ByteConvert } from "../utils/fileUtils";
 import React from "react";
 import type { SortOrder } from "antd/es/table/interface";
 import { StatusTagWithTooltip } from "./StatusTag";
@@ -146,9 +146,6 @@ export const createFileListColumns = (handlers: {
         ) {
           return <PercentDisplay percent={record.progress} status="error" />;
         }
-        if (record.status === UploadStatus.ABORTED) {
-          return <PercentDisplay percent={record.progress} status="error" />;
-        }
         if (record.status === UploadStatus.CALCULATING) {
           return (
             <Tooltip title={`MD5计算进度: ${record.progress}%`}>
@@ -209,15 +206,8 @@ export const createFileListColumns = (handlers: {
             </Button>
           )}
           {(record.status === UploadStatus.ERROR ||
-            record.status === UploadStatus.MERGE_ERROR ||
-            record.status === UploadStatus.ABORTED) && (
-            <Tooltip
-              title={
-                record.status === UploadStatus.ABORTED
-                  ? "重试已中断文件"
-                  : "重试失败文件"
-              }
-            >
+            record.status === UploadStatus.MERGE_ERROR) && (
+            <Tooltip title={"重试失败文件"}>
               <Button
                 type="link"
                 icon={<ReloadOutlined />}

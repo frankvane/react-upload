@@ -1,8 +1,5 @@
 // 文件上传相关 API 封装
 
-// 模拟API延迟（便于观察请求过程）
-const MOCK_DELAY = 200;
-
 // 秒传验证API（需后端接口支持）
 export async function checkInstantUpload(
   {
@@ -65,9 +62,6 @@ export async function checkInstantUpload(
     if (data.code !== 200) throw new Error(data.message || "秒传接口异常");
     return data.data || { uploaded: false, chunkCheckResult: [] };
   } catch {
-    // 关键修改: 始终返回未上传状态，确保文件会进行实际上传
-    // 模拟响应
-    await new Promise((resolve) => setTimeout(resolve, MOCK_DELAY));
     return {
       uploaded: false, // 强制为false，确保会走上传流程
       chunkCheckResult: Array(total)
@@ -102,8 +96,6 @@ export async function getFileStatus(
     if (data.code !== 200) throw new Error(data.message || "状态检测失败");
     return data.data?.chunks || [];
   } catch {
-    // 模拟响应
-    await new Promise((resolve) => setTimeout(resolve, MOCK_DELAY));
     return [];
   }
 }
@@ -190,9 +182,6 @@ export async function uploadFileChunk(
     if (error instanceof DOMException && error.name === "AbortError") {
       throw error;
     }
-
-    // 模拟一个成功的响应
-    await new Promise((resolve) => setTimeout(resolve, MOCK_DELAY));
     return {
       code: 200,
       message: "模拟上传成功",
@@ -247,16 +236,7 @@ export async function mergeFile(
     const data = await res.json();
     if (data.code !== 200) throw new Error(data.message || "合并失败");
     return data;
-  } catch {
-    // 模拟一个成功的响应
-    await new Promise((resolve) => setTimeout(resolve, MOCK_DELAY * 2));
-    return {
-      code: 200,
-      message: "模拟合并成功",
-      data: {
-        url: `https://example.com/files/${md5}/${name}`,
-        md5,
-      },
-    };
+  } catch (error) {
+    console.error("合并失败", error);
   }
 }
