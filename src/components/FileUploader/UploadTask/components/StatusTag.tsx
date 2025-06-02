@@ -3,7 +3,6 @@ import {
   CloseCircleOutlined,
   LoadingOutlined,
   PauseCircleOutlined,
-  StopOutlined,
   SyncOutlined,
 } from "@ant-design/icons";
 import { Tag, Tooltip } from "antd";
@@ -66,12 +65,6 @@ export const getStatusTag = (status: UploadStatus): JSX.Element => {
       return (
         <Tag color="error" icon={<CloseCircleOutlined />}>
           合并失败
-        </Tag>
-      );
-    case UploadStatus.ABORTED:
-      return (
-        <Tag color="orange" icon={<StopOutlined />}>
-          已中断
         </Tag>
       );
     default:
