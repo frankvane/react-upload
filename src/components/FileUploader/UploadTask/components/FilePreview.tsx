@@ -1,7 +1,6 @@
 import { FileOutlined, VideoCameraOutlined } from "@ant-design/icons";
 import React, { useEffect, useState } from "react";
 
-import { memoryManager } from "../../../../utils/memoryOptimizer";
 import { useUploadStore } from "../store/uploadStore";
 
 interface FilePreviewProps {
@@ -30,9 +29,6 @@ const FilePreview: React.FC<FilePreviewProps> = ({
       if (file.size <= maxBlobSize) {
         const objectUrl = URL.createObjectURL(file);
         setUrl(objectUrl);
-
-        // 注册URL到内存管理器以便后续清理
-        memoryManager.registerURL(objectUrl);
 
         // 组件卸载时释放URL
         return () => {
