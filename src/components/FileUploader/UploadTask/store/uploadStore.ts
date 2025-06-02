@@ -47,6 +47,7 @@ interface UploadState {
   setErrorMessage: (id: string, message: string) => void; // 设置错误信息
   removeFile: (id: string) => void; // 从队列中移除文件
   clearCompleted: () => void; // 清除已完成的文件
+  clearAllFiles: () => void; // 清空所有文件
   resetFile: (id: string) => void; // 重置文件状态，用于重试
   initializeFromIndexedDB: () => Promise<void>; // 从IndexedDB初始化文件列表
   getFile: (id: string) => File | undefined; // 根据ID获取文件对象
@@ -305,6 +306,39 @@ export const useUploadStore = create<UploadState>()(
           false,
           { type: "clearCompleted" }
         );
+        // 如果启用了IndexedDB，同时清空数据库中已完成文件的元数据
+        const { useIndexedDB, uploadFiles: currentFiles } =
+          useUploadStore.getState();
+        if (useIndexedDB) {
+          const completedFiles = currentFiles.filter(
+            (file) =>
+              file.status === UploadStatus.DONE ||
+              file.status === UploadStatus.INSTANT
+          );
+          completedFiles.forEach((file) => {
+            if (file.hash) {
+              dbService.removeFileMeta(file.hash);
+            }
+          });
+        }
+      },
+
+      clearAllFiles: () => {
+        // 从fileMap中移除所有文件
+        fileMap.clear();
+
+        set(
+          () => ({
+            uploadFiles: [], // 清空文件列表
+          }),
+          false,
+          { type: "clearAllFiles" }
+        );
+        // 如果启用了IndexedDB，同时清空数据库
+        const { useIndexedDB } = useUploadStore.getState();
+        if (useIndexedDB) {
+          dbService.clearAllFileMeta(); // 清空 IndexedDB
+        }
       },
 
       resetFile: (id) => {

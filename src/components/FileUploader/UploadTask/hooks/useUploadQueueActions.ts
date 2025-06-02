@@ -1,239 +1,146 @@
-import * as dbService from "../services/dbService";
-
 import {
-  addFileToQueue,
-  clearQueue,
   getQueueStats,
   pauseQueue,
   resumeQueue,
-  updateQueueConcurrency,
+  uploadFilesInSequence,
 } from "../services/uploadService";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-import type { UploadFile } from "../store/uploadStore";
 import { UploadStatus } from "../types/upload";
 import { message } from "antd";
 import { useNetworkType } from "../hooks/useNetworkType";
 import { useUploadStore } from "../store/uploadStore";
 
-export function useUploadQueueActions(
-  sortedFiles: UploadFile[],
-  pageSize: number,
-  onJumpToPage?: (page: number) => void
-) {
-  // 状态
-  const [queuePaused, setQueuePaused] = useState<boolean>(false);
-  const uploadFiles = useUploadStore((state) => state.uploadFiles);
-  const removeFile = useUploadStore((state) => state.removeFile);
-  const resetFile = useUploadStore((state) => state.resetFile);
-  const { networkType, chunkSize, fileConcurrency, chunkConcurrency } =
-    useNetworkType();
-  const isOffline = networkType === "offline";
+export const useUploadQueueActions = (/* Parameters removed */) => {
+  const { uploadFiles, clearAllFiles } = useUploadStore();
+  const { networkType } = useNetworkType();
+  const [queuePaused, setQueuePaused] = useState(false);
+
+  // 使用useMemo缓存过滤后的文件列表，避免不必要的重复计算
+  const sortedFiles = useMemo(
+    () => Object.values(uploadFiles).sort((a, b) => a.order - b.order),
+    [uploadFiles]
+  );
+
+  const uploadingFiles = useMemo(
+    () => sortedFiles.filter((file) => file.status === UploadStatus.UPLOADING),
+    [sortedFiles]
+  );
+  const pendingFiles = useMemo(
+    () =>
+      sortedFiles.filter(
+        (file) => file.status === UploadStatus.QUEUED_FOR_UPLOAD
+      ),
+    [sortedFiles]
+  );
+  const pausedFiles = useMemo(
+    () => sortedFiles.filter((file) => file.status === UploadStatus.PAUSED),
+    [sortedFiles]
+  );
+  const errorFiles = useMemo(
+    () =>
+      sortedFiles.filter(
+        (file) =>
+          file.status === UploadStatus.ERROR ||
+          file.status === UploadStatus.MERGE_ERROR
+      ),
+    [sortedFiles]
+  );
+
+  // 统计
+  const totalPendingCount = pendingFiles.length + pausedFiles.length;
+  const totalFailedCount = errorFiles.length;
+
+  // 上传队列中的所有操作函数
+  const handleUpload = useCallback(() => {
+    // 过滤出待上传和暂停的文件
+    const filesToUpload = sortedFiles.filter(
+      (file) =>
+        file.status === UploadStatus.QUEUED_FOR_UPLOAD ||
+        file.status === UploadStatus.PAUSED
+    );
+
+    const fileIdsToUpload = filesToUpload.map((file) => file.id);
+
+    if (fileIdsToUpload.length > 0) {
+      // 确保队列处于启动状态
+      const queueStats = getQueueStats();
+      if (queueStats.isPaused) {
+        resumeQueue();
+      }
+      // 使用uploadFilesInSequence批量添加并启动上传
+      uploadFilesInSequence(fileIdsToUpload);
+      message.success(`开始上传 ${fileIdsToUpload.length} 个文件`);
+    } else {
+      message.warning("没有待上传或已暂停的文件");
+    }
+  }, [sortedFiles]);
+
+  // 暂停队列
+  const toggleQueuePause = useCallback(() => {
+    if (queuePaused) {
+      resumeQueue();
+      setQueuePaused(false);
+      message.info("队列已恢复");
+    } else {
+      pauseQueue(); // Use pauseQueue to pause the entire queue
+      setQueuePaused(true);
+      message.info("队列已暂停");
+    }
+  }, [queuePaused]);
+
+  // 清空所有文件
+  const handleClearQueue = useCallback(() => {
+    // 清空store中的所有文件
+    clearAllFiles();
+    message.success("队列已清空");
+  }, [clearAllFiles]);
+
+  // 暂停队列中的所有文件
+  const handlePauseAll = useCallback(() => {
+    pauseQueue();
+  }, []);
+
+  // 恢复队列中的所有文件
+  const handleResumeAll = useCallback(() => {
+    resumeQueue();
+  }, []);
+
+  // 重试所有失败的文件
+  const handleRetryAllFailed = useCallback(() => {
+    const failedFileIds = errorFiles.map((file) => file.id);
+    if (failedFileIds.length > 0) {
+      // 确保队列处于启动状态
+      const queueStats = getQueueStats();
+      if (queueStats.isPaused) {
+        resumeQueue();
+      }
+      uploadFilesInSequence(failedFileIds);
+      message.success(`开始重试 ${failedFileIds.length} 个失败文件`);
+    } else {
+      message.warning("没有失败文件需要重试");
+    }
+  }, [errorFiles]);
 
   // 监听网络状态变化，更新队列并发数
   useEffect(() => {
-    updateQueueConcurrency(fileConcurrency);
-    if (isOffline) {
-      message.warning("网络已断开，上传功能将暂时不可用");
-    }
-  }, [networkType, chunkSize, fileConcurrency, chunkConcurrency, isOffline]);
-
-  // 计算各种状态的文件
-  const pendingFiles = uploadFiles.filter(
-    (file) => file.status === UploadStatus.QUEUED_FOR_UPLOAD
-  );
-  const uploadingFiles = uploadFiles.filter((file) =>
-    [
-      UploadStatus.QUEUED,
-      UploadStatus.CALCULATING,
-      UploadStatus.PREPARING_UPLOAD,
-      UploadStatus.UPLOADING,
-    ].includes(file.status)
-  );
-  const pausedFiles = uploadFiles.filter(
-    (file) => file.status === UploadStatus.PAUSED
-  );
-  const errorFiles = uploadFiles.filter(
-    (file) =>
-      file.status === UploadStatus.ERROR ||
-      file.status === UploadStatus.MERGE_ERROR
-  );
-
-  // 上传
-  const handleUpload = useCallback(() => {
-    if (isOffline) {
-      message.error("网络已断开，无法上传文件");
-      return;
-    }
-    if (pendingFiles.length === 0) {
-      message.warning("没有待上传的文件");
-      return;
-    }
-    message.success(
-      `开始上传 ${pendingFiles.length} 个文件 (并发数: ${fileConcurrency})`
-    );
-    setQueuePaused(false);
-    const addFilesWithDelay = async () => {
-      for (let i = 0; i < pendingFiles.length; i++) {
-        const file = pendingFiles[i];
-        addFileToQueue(file.id, fileConcurrency);
-        if (i < pendingFiles.length - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 100));
-        }
-      }
-    };
-    addFilesWithDelay();
-  }, [isOffline, pendingFiles, fileConcurrency]);
-
-  // 暂停
-  const handlePauseQueue = useCallback(async () => {
-    if (isOffline) {
-      message.error("网络已断开，无法操作上传队列");
-      return;
-    }
-    if (uploadingFiles.length === 0 && pendingFiles.length === 0) {
-      message.warning("没有正在上传或待上传的文件");
-      return;
-    }
-    message.info("正在暂停上传队列...");
-    pauseQueue();
-    clearQueue();
-    setQueuePaused(true);
-  }, [isOffline, uploadingFiles, pendingFiles]);
-
-  // 恢复
-  const handleResumeQueue = useCallback(async () => {
-    if (isOffline) {
-      message.error("网络已断开，无法操作上传队列");
-      return;
-    }
-    const unfinishedFiles = sortedFiles.filter(
-      (file) =>
-        file.status !== UploadStatus.DONE &&
-        file.status !== UploadStatus.INSTANT &&
-        file.status !== UploadStatus.ERROR &&
-        file.status !== UploadStatus.MERGE_ERROR
-    );
-    if (unfinishedFiles.length === 0) {
-      message.warning("没有暂停的文件需要恢复");
-      return;
-    }
-    message.info(`正在恢复上传队列 (并发数: ${fileConcurrency})...`);
-    await resumeQueue(fileConcurrency);
-    for (let i = 0; i < unfinishedFiles.length; i++) {
-      const file = unfinishedFiles[i];
-      if (
-        file.status === UploadStatus.PAUSED ||
-        file.status === UploadStatus.ERROR ||
-        file.status === UploadStatus.MERGE_ERROR
-      ) {
-        resetFile(file.id);
-      }
-      addFileToQueue(file.id, unfinishedFiles.length - i, fileConcurrency);
-      if (i < unfinishedFiles.length - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
-    }
-    setQueuePaused(false);
-    message.success(`已恢复上传队列 (并发数: ${fileConcurrency})`);
-    if (unfinishedFiles.length > 0 && onJumpToPage) {
-      const firstUnfinishedId = unfinishedFiles[0].id;
-      const index = sortedFiles.findIndex((f) => f.id === firstUnfinishedId);
-      const targetPage = Math.floor(index / pageSize) + 1;
-      onJumpToPage(targetPage);
-    }
-  }, [
-    isOffline,
-    sortedFiles,
-    fileConcurrency,
-    resetFile,
-    onJumpToPage,
-    pageSize,
-  ]);
-
-  // 切换暂停/恢复
-  const toggleQueuePause = useCallback(async () => {
-    if (queuePaused) {
-      await handleResumeQueue();
-    } else {
-      await handlePauseQueue();
-    }
-  }, [queuePaused, handleResumeQueue, handlePauseQueue]);
-
-  // 清空
-  const handleClearQueue = useCallback(async () => {
-    clearQueue();
-    try {
-      await dbService.clearAllFileMeta();
-    } catch (error) {
-      console.error("清空 IndexedDB 失败:", error);
-    }
-    uploadFiles.forEach((file) => {
-      removeFile(file.id);
-    });
-    setQueuePaused(false);
-    message.success("已清空所有文件");
-  }, [uploadFiles, removeFile]);
-
-  // 重试
-  const handleRetryAllFailed = useCallback(() => {
-    if (isOffline) {
-      message.error("网络已断开，无法重试失败的文件");
-      return;
-    }
-    const errorAndAbortedFiles = uploadFiles.filter(
-      (file) =>
-        file.status === UploadStatus.ERROR ||
-        file.status === UploadStatus.MERGE_ERROR
-    );
-    const retryCount = errorAndAbortedFiles.length;
-    if (retryCount === 0) {
-      message.warning("没有失败或已中断的文件需要重试");
-      return;
-    }
-    if (queuePaused) {
-      setQueuePaused(false);
-    }
-    message.success(
-      `开始重试 ${retryCount} 个失败或已中断的文件 (并发数: ${fileConcurrency})`
-    );
-    const retryFilesWithDelay = async () => {
-      const queueStats = getQueueStats();
-      if (queueStats.isPaused) {
-        resumeQueue(fileConcurrency);
-      }
-      for (let i = 0; i < errorAndAbortedFiles.length; i++) {
-        const file = errorAndAbortedFiles[i];
-        resetFile(file.id);
-        addFileToQueue(file.id, fileConcurrency);
-        if (i < errorAndAbortedFiles.length - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 100));
-        }
-      }
-    };
-    retryFilesWithDelay();
-  }, [isOffline, uploadFiles, fileConcurrency, queuePaused, resetFile]);
-
-  // 统计
-  const totalPendingCount = pendingFiles.length;
-  const totalFailedCount = errorFiles.length;
+    // updateChunkConcurrency(networkType);
+  }, [networkType]);
 
   return {
     queuePaused,
-    setQueuePaused,
-    isOffline,
+    isOffline: networkType === "offline",
     uploadingFiles,
     pendingFiles,
     pausedFiles,
-    errorFiles,
     uploadFiles,
     handleUpload,
-    handlePauseQueue,
-    handleResumeQueue,
     toggleQueuePause,
-    handleClearQueue,
     handleRetryAllFailed,
+    handleClearQueue,
+    handlePauseAll,
+    handleResumeAll,
     totalPendingCount,
     totalFailedCount,
   };
-}
+};

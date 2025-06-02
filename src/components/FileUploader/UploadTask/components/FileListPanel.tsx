@@ -2,30 +2,23 @@ import "./FileListPanel.css";
 
 import * as dbService from "../services/dbService";
 
-import type {
-  FilterValue,
-  SortOrder,
-  SorterResult,
-  TablePaginationConfig,
-} from "antd/es/table/interface";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
-  addFileToQueue,
   getQueueStats,
   pauseFile,
   resumeFile,
   resumeQueue,
   retryUpload,
-  uploadFilesInSequence,
   useAutoPauseQueueOnNetworkChange,
 } from "../services/uploadService";
-import { message, notification } from "antd";
 
+import type { SorterResult } from "antd/es/table/interface";
 import { Table } from "antd";
-import UploadButton from "./UploadButton";
+import UploadControls from "./UploadControls";
 import type { UploadFile } from "../store/uploadStore";
 import { UploadStatus } from "../types/upload";
 import { createFileListColumns } from "./FileListColumns";
+import { notification } from "antd";
 import { useSortedUploadFiles } from "../hooks/useSortedUploadFiles";
 import { useTableHeight } from "../hooks/useTableHeight";
 import { useUploadFileStatus } from "../hooks/useUploadFileStatus";
@@ -33,30 +26,6 @@ import { useUploadStore } from "../store/uploadStore";
 
 const FileListPanel: React.FC = () => {
   useAutoPauseQueueOnNetworkChange();
-
-  // 添加分页配置
-  const [pagination, setPagination] = useState<TablePaginationConfig>({
-    current: 1,
-    pageSize: 5, // 默认每页显示10条
-    showSizeChanger: true,
-    pageSizeOptions: ["5", "10", "20", "50"],
-    showTotal: (total) => `共 ${total} 条记录`,
-  });
-
-  // 使用refs防止无限循环更新
-  const paginationRef = useRef(pagination);
-  // 合并自动跳页锁
-  const autoPagingLockRef = useRef(false); // 标记自动跳页锁
-  // 合并文件数量和上次已完成数
-  const prevFileMetaRef = useRef<{ count: number; finished: number }>({
-    count: 0,
-    finished: 0,
-  });
-
-  // 当pagination状态更新时同步到ref
-  useEffect(() => {
-    paginationRef.current = pagination;
-  }, [pagination]);
 
   // 使用选择器函数分别获取状态和动作，避免不必要的重新渲染
   const uploadFiles = useUploadStore((state) => state.uploadFiles);
@@ -70,7 +39,7 @@ const FileListPanel: React.FC = () => {
   const { sortedFiles, setSortState } = useSortedUploadFiles(uploadFiles);
 
   // 使用自定义 Hook 获取文件状态
-  const { hasUploadingFiles, hasCompletedFiles, failedFiles } =
+  const { hasUploadingFiles, hasCompletedFiles } =
     useUploadFileStatus(sortedFiles);
 
   // 批量上传结果汇总通知
@@ -85,12 +54,7 @@ const FileListPanel: React.FC = () => {
         f.status === UploadStatus.MERGE_ERROR
     ).length;
 
-    if (
-      total > 0 &&
-      finished === total &&
-      !notified &&
-      total !== prevFileMetaRef.current.finished
-    ) {
+    if (total > 0 && finished === total && !notified) {
       const successCount = sortedFiles.filter(
         (f) =>
           f.status === UploadStatus.DONE || f.status === UploadStatus.INSTANT
@@ -108,7 +72,6 @@ const FileListPanel: React.FC = () => {
       });
 
       setNotified(true);
-      prevFileMetaRef.current.finished = total;
     }
     if (finished < total) {
       setNotified(false);
@@ -141,77 +104,11 @@ const FileListPanel: React.FC = () => {
     }
   }, [sortedFiles]);
 
-  // 在组件中添加对文件添加的监听
-  useEffect(() => {
-    // 如果文件数量增加，说明有新文件被添加，将分页重置到第1页
-    if (uploadFiles.length > prevFileMetaRef.current.count) {
-      // 重置到第1页
-      setPagination((prev) => {
-        const newPagination = {
-          ...prev,
-          current: 1,
-        };
-        paginationRef.current = newPagination;
-        return newPagination;
-      });
-    }
-
-    // 更新文件数量引用
-    prevFileMetaRef.current.count = uploadFiles.length;
-  }, [uploadFiles.length]);
-
-  // 标记用户是否手动切页，禁止自动跳页
-  const [userPaging, setUserPaging] = useState(false);
-
-  // 跳到指定页方法，供UploadButton调用
-  const jumpToPage = (page: number) => {
-    setPagination((prev) => ({ ...prev, current: page }));
-    setUserPaging(false);
-  };
-
-  // 修改自动翻页逻辑，支持INSTANT和DONE状态，持续监听，直到所有页都完成
-  useEffect(() => {
-    if (autoPagingLockRef.current) {
-      // 如果锁被占用，但当前页不是跳页条件，立即释放锁
-      autoPagingLockRef.current = false;
-      return;
-    }
-    if (userPaging) return;
-    const { current = 1, pageSize = 5 } = pagination;
-    const startIndex = (current - 1) * pageSize;
-    const endIndex = current * pageSize;
-    if (startIndex >= sortedFiles.length) return;
-    const currentPageFiles = sortedFiles.slice(
-      startIndex,
-      Math.min(endIndex, sortedFiles.length)
-    );
-    const allCurrentPageDone =
-      currentPageFiles.length > 0 &&
-      currentPageFiles.every(
-        (file) =>
-          file.status === UploadStatus.DONE ||
-          file.status === UploadStatus.INSTANT
-      );
-    const hasNextPage = sortedFiles.length > endIndex;
-    if (allCurrentPageDone && hasNextPage) {
-      autoPagingLockRef.current = true;
-      setPagination((prev) => ({
-        ...prev,
-        current: current + 1,
-      }));
-    }
-  }, [sortedFiles, userPaging, pagination.current]);
-
   // 处理表格排序和分页变化
   const handleTableChange = (
-    paginationConfig: TablePaginationConfig,
-    _filters: Record<string, FilterValue | null>,
+    _filters: Record<string, any>,
     sorter: SorterResult<UploadFile> | SorterResult<UploadFile>[]
   ) => {
-    // 用户手动切页时，禁止自动跳页
-    setUserPaging(true);
-    setPagination(paginationConfig);
-    paginationRef.current = paginationConfig;
     const sorterResult = Array.isArray(sorter) ? sorter[0] : sorter;
     setSortState({
       order:
@@ -257,93 +154,9 @@ const FileListPanel: React.FC = () => {
     [removeFile]
   );
 
-  const handleUploadFile = useCallback(
-    (fileId: string) => {
-      // 查找文件在当前排序列表中的位置
-      const index = sortedFiles.findIndex((file) => file.id === fileId);
-      const priority = index >= 0 ? 9999 - index : 0; // 优先级基于表格位置
-      addFileToQueue(fileId, priority);
-    },
-    [sortedFiles]
-  );
-
   const handleClearCompleted = useCallback(() => {
     clearCompleted();
   }, [clearCompleted]);
-
-  // 批量上传所有等待中的文件
-  const handleUploadAll = useCallback(() => {
-    // 确保队列处于启动状态
-    const queueStats = getQueueStats();
-    if (queueStats.isPaused) {
-      resumeQueue();
-    }
-
-    // 确保从第一页开始上传
-    setPagination((prev) => {
-      const newPagination = {
-        ...prev,
-        current: 1,
-      };
-      paginationRef.current = newPagination;
-      return newPagination;
-    });
-
-    // 获取所有等待上传的文件，不仅仅是第一页
-    const waitingFiles = sortedFiles.filter(
-      (file) => file.status === UploadStatus.QUEUED_FOR_UPLOAD
-    );
-
-    // 获取文件ID数组
-    const fileIds = waitingFiles.map((file) => file.id);
-
-    // 显示开始上传的信息
-    if (fileIds.length > 0) {
-      message.success(`开始上传 ${fileIds.length} 个文件`);
-      // 使用顺序上传功能
-      uploadFilesInSequence(fileIds);
-    } else {
-      message.warning("没有待上传的文件");
-    }
-  }, [sortedFiles]);
-
-  // 重试所有失败的文件
-  const handleRetryAllFailed = useCallback(() => {
-    console.log(`[DEBUG] 重试所有失败或已中断的文件`);
-
-    // 确保队列处于启动状态
-    const queueStats = getQueueStats();
-    if (queueStats.isPaused) {
-      console.log(`[DEBUG] 队列处于暂停状态，正在启动队列`);
-      resumeQueue();
-    }
-
-    // 按照当前排序顺序重试失败的文件
-    const failedFilesInOrder = sortedFiles.filter(
-      (file) =>
-        file.status === UploadStatus.ERROR ||
-        file.status === UploadStatus.MERGE_ERROR
-    );
-
-    console.log(
-      `[DEBUG] 找到 ${failedFilesInOrder.length} 个失败或已中断的文件需要重试`
-    );
-
-    // 获取文件ID数组
-    const fileIds = failedFilesInOrder.map((file) => file.id);
-
-    // 显示开始重试的消息
-    if (fileIds.length > 0) {
-      message.success(`开始重试 ${fileIds.length} 个失败或已中断的文件`);
-      console.log(`[DEBUG] 开始重试文件:`, fileIds);
-
-      // 使用顺序上传功能
-      uploadFilesInSequence(fileIds);
-    } else {
-      message.warning("没有失败或已中断的文件需要重试");
-      console.log(`[DEBUG] 没有找到需要重试的文件`);
-    }
-  }, [sortedFiles]);
 
   const handlePauseFile = useCallback((fileId: string) => {
     pauseFile(fileId);
@@ -365,17 +178,10 @@ const FileListPanel: React.FC = () => {
       createFileListColumns({
         handleRetry,
         handleRemove,
-        handleUploadFile,
-        handlePauseFile,
-        handleResumeFile,
+        handlePauseFile: handlePauseFile,
+        handleResumeFile: handleResumeFile,
       }),
-    [
-      handleRetry,
-      handleRemove,
-      handleUploadFile,
-      handlePauseFile,
-      handleResumeFile,
-    ]
+    [handleRetry, handleRemove, handlePauseFile, handleResumeFile]
   );
 
   // 缓存空间占用显示
@@ -402,16 +208,10 @@ const FileListPanel: React.FC = () => {
         <span style={{ color: "#888", fontSize: 13, marginLeft: 16 }}>
           本地缓存占用：{(cacheSize / (1024 * 1024)).toFixed(2)} MB
         </span>
-        <UploadButton
+        <UploadControls
           hasUploadingFiles={hasUploadingFiles}
           hasCompletedFiles={hasCompletedFiles}
-          failedFilesCount={failedFiles.length}
-          onUploadAll={handleUploadAll}
-          onRetryAllFailed={handleRetryAllFailed}
           onClearCompleted={handleClearCompleted}
-          onJumpToPage={jumpToPage}
-          pageSize={pagination.pageSize || 5}
-          sortedFiles={sortedFiles}
         />
       </div>
       {resumeInfo && (
@@ -427,13 +227,13 @@ const FileListPanel: React.FC = () => {
           rowKey="id"
           pagination={false}
           size="middle"
+          virtual
           scroll={{ y: tableHeight }}
           rowClassName={(_, index) =>
             index % 2 === 0 ? "table-row-light" : "table-row-dark"
           }
           className="virtual-table"
           onChange={handleTableChange}
-          sortDirections={["ascend", "descend"] as SortOrder[]}
         />
       </div>
     </div>
