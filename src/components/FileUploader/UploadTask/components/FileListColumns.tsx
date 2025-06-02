@@ -13,6 +13,8 @@ import { StatusTagWithTooltip } from "./StatusTag";
 import type { UploadFile } from "../store/uploadStore";
 import { UploadStatus } from "../types/upload";
 
+type ColumnAlignType = "left" | "right" | "center";
+
 /**
  * 创建文件列表的表格列配置
  * @param handlers 处理函数对象，包含各种操作的处理函数
@@ -33,7 +35,7 @@ export const createFileListColumns = (handlers: {
       key: "index",
       width: "5%",
       render: (_: unknown, __: unknown, index: number) => index + 1,
-      align: "center",
+      align: "center" as ColumnAlignType,
     },
     {
       title: "文件名",
@@ -60,7 +62,7 @@ export const createFileListColumns = (handlers: {
       sortDirections: ["ascend", "descend"] as SortOrder[],
       render: (fileSize: number) => ByteConvert(fileSize),
       width: "15%",
-      align: "right",
+      align: "right" as ColumnAlignType,
     },
     {
       title: "状态",
@@ -108,7 +110,7 @@ export const createFileListColumns = (handlers: {
         return <PercentDisplay percent={record.progress} status="normal" />;
       },
       width: "10%",
-      align: "center",
+      align: "center" as ColumnAlignType,
     },
     {
       title: "修改时间",
@@ -118,12 +120,12 @@ export const createFileListColumns = (handlers: {
       sortDirections: ["ascend", "descend"] as SortOrder[],
       render: (lastModified: number) => new Date(lastModified).toLocaleString(),
       width: "15%",
-      align: "center",
+      align: "center" as ColumnAlignType,
     },
     {
       title: "操作",
       key: "action",
-      align: "center",
+      align: "center" as ColumnAlignType,
       render: (_: unknown, record: UploadFile) => (
         <Space size="middle">
           {record.status === UploadStatus.UPLOADING && (
