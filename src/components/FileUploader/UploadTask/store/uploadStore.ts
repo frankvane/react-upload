@@ -50,6 +50,13 @@ interface UploadState {
   resetFile: (id: string) => void; // 重置文件状态，用于重试
   initializeFromIndexedDB: () => Promise<void>; // 从IndexedDB初始化文件列表
   getFile: (id: string) => File | undefined; // 根据ID获取文件对象
+  addFilesBatch: (
+    files: Array<{
+      file: File;
+      id: string;
+      meta: { key: string; chunkSize?: number; chunkCount?: number };
+    }>
+  ) => void; // 批量添加文件
 }
 
 // 创建 Zustand store
@@ -395,6 +402,78 @@ export const useUploadStore = create<UploadState>()(
         } catch (error) {
           console.error("从 IndexedDB 初始化文件列表失败:", error);
         }
+      },
+
+      // 批量添加文件
+      addFilesBatch: (filesToAdd) => {
+        set(
+          (state) => {
+            let currentUploadFiles = [...state.uploadFiles];
+
+            filesToAdd.forEach(({ file, id, meta }) => {
+              const existingFileIndex = currentUploadFiles.findIndex(
+                (uploadFile) => uploadFile.id === id
+              );
+
+              // 将文件保存到映射表中，但不直接保存到状态中
+              fileMap.set(id, file);
+
+              if (existingFileIndex > -1) {
+                // 如果文件已经在队列中，并且状态是已完成或秒传，则不做任何操作
+                if (
+                  currentUploadFiles[existingFileIndex].status !==
+                    UploadStatus.DONE &&
+                  currentUploadFiles[existingFileIndex].status !==
+                    UploadStatus.INSTANT
+                ) {
+                  // 如果文件已经在队列中，但状态不是已完成或秒传，则重置其状态
+                  currentUploadFiles[existingFileIndex] = {
+                    ...currentUploadFiles[existingFileIndex],
+                    status: UploadStatus.QUEUED_FOR_UPLOAD, // 选中文件后即为等待上传状态
+                    progress: 0,
+                    uploadedChunks: 0,
+                    pausedChunks: [],
+                    errorMessage: undefined,
+                    createdAt: Date.now(),
+                    hash: meta.key, // 如果提供了 MD5，则设置哈希值
+                    chunkSize: meta.chunkSize,
+                    chunkCount: meta.chunkCount,
+                  };
+                }
+              } else {
+                // 如果文件不在队列中，则添加到队列
+                currentUploadFiles = [
+                  ...currentUploadFiles,
+                  {
+                    id: id,
+                    fileName: file.name,
+                    fileSize: file.size,
+                    fileType: file.type,
+                    lastModified: file.lastModified,
+                    status: UploadStatus.QUEUED_FOR_UPLOAD,
+                    progress: 0,
+                    hash: meta.key,
+                    chunkSize: meta.chunkSize,
+                    chunkCount: meta.chunkCount,
+                    uploadedChunks: 0,
+                    pausedChunks: [],
+                    createdAt: Date.now(),
+                    order: 0, // 先占位，后面统一分配
+                  },
+                ];
+              }
+            });
+
+            // 统一为所有文件分配order，保证顺序唯一且递增
+            const reordered = currentUploadFiles
+              .map((file, idx) => ({ ...file, order: idx }))
+              .sort((a, b) => a.order - b.order);
+
+            return { uploadFiles: reordered };
+          },
+          false,
+          { type: "addFilesBatch", filesCount: filesToAdd.length }
+        );
       },
     })),
     {

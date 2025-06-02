@@ -425,7 +425,7 @@ const FileListPanel: React.FC = () => {
           dataSource={sortedFiles}
           columns={columns}
           rowKey="id"
-          pagination={pagination}
+          pagination={false}
           size="middle"
           scroll={{ y: tableHeight }}
           rowClassName={(_, index) =>
