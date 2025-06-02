@@ -2,6 +2,7 @@ import {
   getQueueStats,
   pauseQueue,
   resumeQueue,
+  updateQueueConcurrency,
   uploadFilesInSequence,
 } from "../services/uploadService";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -13,7 +14,7 @@ import { useUploadStore } from "../store/uploadStore";
 
 export const useUploadQueueActions = (/* Parameters removed */) => {
   const { uploadFiles, clearAllFiles } = useUploadStore();
-  const { networkType } = useNetworkType();
+  const { networkType, fileConcurrency } = useNetworkType();
   const [queuePaused, setQueuePaused] = useState(false);
 
   // 使用useMemo缓存过滤后的文件列表，避免不必要的重复计算
@@ -68,13 +69,15 @@ export const useUploadQueueActions = (/* Parameters removed */) => {
       if (queueStats.isPaused) {
         resumeQueue();
       }
+      // 根据网络状态更新文件上传队列的并发数
+      updateQueueConcurrency(fileConcurrency);
       // 使用uploadFilesInSequence批量添加并启动上传
       uploadFilesInSequence(fileIdsToUpload);
       message.success(`开始上传 ${fileIdsToUpload.length} 个文件`);
     } else {
       message.warning("没有待上传或已暂停的文件");
     }
-  }, [sortedFiles]);
+  }, [sortedFiles, fileConcurrency]);
 
   // 暂停队列
   const toggleQueuePause = useCallback(() => {
@@ -115,17 +118,23 @@ export const useUploadQueueActions = (/* Parameters removed */) => {
       if (queueStats.isPaused) {
         resumeQueue();
       }
+      // 根据网络状态更新文件上传队列的并发数
+      updateQueueConcurrency(fileConcurrency);
       uploadFilesInSequence(failedFileIds);
       message.success(`开始重试 ${failedFileIds.length} 个失败文件`);
     } else {
       message.warning("没有失败文件需要重试");
     }
-  }, [errorFiles]);
+  }, [errorFiles, fileConcurrency]);
 
   // 监听网络状态变化，更新队列并发数
   useEffect(() => {
     // updateChunkConcurrency(networkType);
-  }, [networkType]);
+    console.log(
+      "[DEBUG] useNetworkType 计算的 fileConcurrency:",
+      fileConcurrency
+    );
+  }, [networkType, fileConcurrency]);
 
   return {
     queuePaused,
