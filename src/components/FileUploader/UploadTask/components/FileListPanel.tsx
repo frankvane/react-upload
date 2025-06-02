@@ -44,6 +44,7 @@ const FileListPanel: React.FC = () => {
 
   // 批量上传结果汇总通知
   const [notified, setNotified] = useState(false);
+
   useEffect(() => {
     const total = sortedFiles.length;
     const finished = sortedFiles.filter(
@@ -121,12 +122,9 @@ const FileListPanel: React.FC = () => {
 
   const handleRetry = useCallback(
     (fileId: string) => {
-      console.log(`[DEBUG] 重试文件 ${fileId}`);
-
       // 确保队列处于启动状态
       const queueStats = getQueueStats();
       if (queueStats.isPaused) {
-        console.log(`[DEBUG] 队列处于暂停状态，正在启动队列`);
         resumeQueue();
       }
 
@@ -134,15 +132,10 @@ const FileListPanel: React.FC = () => {
       const index = sortedFiles.findIndex((file) => file.id === fileId);
       const priority = index >= 0 ? 9999 - index : 0; // 优先级基于表格位置
 
-      console.log(`[DEBUG] 重试文件 ${fileId}，优先级: ${priority}`);
       retryUpload(fileId, priority);
 
       // 确保文件状态被更新
-      setTimeout(() => {
-        const { uploadFiles } = useUploadStore.getState();
-        const file = uploadFiles.find((f) => f.id === fileId);
-        console.log(`[DEBUG] 重试后文件 ${fileId} 状态: ${file?.status}`);
-      }, 500);
+      setTimeout(() => {}, 500);
     },
     [sortedFiles]
   );

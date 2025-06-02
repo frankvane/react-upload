@@ -8,7 +8,6 @@ import {
 
 import { ByteConvert } from "../utils/fileUtils";
 import PercentDisplay from "./PercentDisplay";
-import React from "react";
 import type { SortOrder } from "antd/es/table/interface";
 import { StatusTagWithTooltip } from "./StatusTag";
 import type { UploadFile } from "../store/uploadStore";
@@ -34,6 +33,7 @@ export const createFileListColumns = (handlers: {
       key: "index",
       width: "5%",
       render: (_: unknown, __: unknown, index: number) => index + 1,
+      align: "center",
     },
     {
       title: "文件名",
@@ -59,7 +59,8 @@ export const createFileListColumns = (handlers: {
       sorter: true,
       sortDirections: ["ascend", "descend"] as SortOrder[],
       render: (fileSize: number) => ByteConvert(fileSize),
-      width: "10%",
+      width: "15%",
+      align: "right",
     },
     {
       title: "状态",
@@ -72,7 +73,7 @@ export const createFileListColumns = (handlers: {
           errorMessage={record.errorMessage}
         />
       ),
-      width: "10%",
+      width: "15%",
     },
     {
       title: "进度",
@@ -106,7 +107,8 @@ export const createFileListColumns = (handlers: {
         // 其他状态
         return <PercentDisplay percent={record.progress} status="normal" />;
       },
-      width: "15%",
+      width: "10%",
+      align: "center",
     },
     {
       title: "修改时间",
@@ -116,10 +118,12 @@ export const createFileListColumns = (handlers: {
       sortDirections: ["ascend", "descend"] as SortOrder[],
       render: (lastModified: number) => new Date(lastModified).toLocaleString(),
       width: "15%",
+      align: "center",
     },
     {
       title: "操作",
       key: "action",
+      align: "center",
       render: (_: unknown, record: UploadFile) => (
         <Space size="middle">
           {record.status === UploadStatus.UPLOADING && (
@@ -166,7 +170,7 @@ export const createFileListColumns = (handlers: {
           </Button>
         </Space>
       ),
-      width: "20%",
+      width: "15%",
     },
   ];
 };
